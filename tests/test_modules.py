@@ -1,6 +1,7 @@
 from pathlib import Path
 import pytest
 from platform_core.modules import (
+    AdminControlModule,
     BaseBotModule,
     ImageGenModule,
     ModularBotBuilder,
@@ -13,15 +14,20 @@ from platform_core.presets import PromptPreset
 def test_modules_instantiation():
     monetization = MonetizationModule()
     image_gen = ImageGenModule()
+    admin_control = AdminControlModule()
 
     assert monetization.name == "monetization"
     assert image_gen.name == "image_gen"
+    assert admin_control.name == "admin_control"
 
     cmds_monetization = monetization.get_bot_commands()
     assert any(c.command == "buy" for c in cmds_monetization)
 
     cmds_image = image_gen.get_bot_commands()
     assert any(c.command == "presets" for c in cmds_image)
+
+    cmds_admin = admin_control.get_bot_commands()
+    assert any(c.command == "start" for c in cmds_admin)
 
 
 def test_builder_fluent_assembly():
@@ -74,6 +80,8 @@ modules:
     enabled: true
     options:
       file: "{presets_yaml}"
+  - name: "admin_control"
+    enabled: true
 """,
         encoding="utf-8",
     )
@@ -82,4 +90,5 @@ modules:
     bot_app = builder.build()
 
     assert bot_app.bot_id == "config_test_bot"
-    assert len(bot_app.modules) == 3
+    assert len(bot_app.modules) == 4
+

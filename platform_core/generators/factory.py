@@ -23,3 +23,11 @@ class GeneratorFactory:
 
         logger.info("Using UnifiedMediaGenerator (LiteLLM Gateway) for generation jobs.")
         return UnifiedMediaGenerator()
+
+    @classmethod
+    def create_generator(cls, force_mock: bool = False) -> BaseMediaGenerator:
+        """
+        Alias for get_generator.
+        """
+        return cls.get_generator(force_mock=force_mock)
+

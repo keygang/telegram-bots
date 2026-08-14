@@ -8,6 +8,7 @@ from aiogram.types import BotCommand
 from platform_core.bot.middlewares import UserSyncMiddleware, I18nMiddleware
 from platform_core.config import settings
 from platform_core.metrics import MetricsMiddleware
+from platform_core.modules.admin_control import AdminControlModule
 from platform_core.modules.base import BaseBotModule
 from platform_core.modules.image_gen import ImageGenModule
 from platform_core.modules.monetization import MonetizationModule
@@ -171,6 +172,8 @@ class ModularBotBuilder:
                 builder.add_module(MonetizationModule(**opts))
             elif m_name == "image_gen":
                 builder.add_module(ImageGenModule(**opts))
+            elif m_name == "admin_control":
+                builder.add_module(AdminControlModule(**opts))
             elif m_name == "presets":
                 preset_file = opts.get("file")
                 if preset_file:

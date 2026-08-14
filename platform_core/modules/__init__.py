@@ -1,3 +1,4 @@
+from .admin_control import AdminControlModule
 from .base import BaseBotModule
 from .builder import ModularBot, ModularBotBuilder
 from .image_gen import ImageGenModule
@@ -9,6 +10,8 @@ __all__ = [
     "MonetizationModule",
     "ImageGenModule",
     "PresetsModule",
+    "AdminControlModule",
     "ModularBot",
     "ModularBotBuilder",
 ]
+

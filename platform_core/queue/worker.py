@@ -50,7 +50,7 @@ class AIWorkerPool:
                     logger.warning(f"Failed to decode reference photo for job {job.job_id}: {e}")
 
             # Instantiate appropriate generator (Replicate or Mock)
-            generator = GeneratorFactory.create_generator(force_mock=self.force_mock)
+            generator = GeneratorFactory.get_generator(force_mock=self.force_mock)
 
             gen_req = GenerationRequest(
                 prompt=job.prompt,
