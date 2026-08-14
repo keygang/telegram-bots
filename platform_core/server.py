@@ -8,6 +8,7 @@ from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request, Response, status
 from platform_core.cli import get_instance_config_files
 from platform_core.config import settings
+from platform_core.metrics.prometheus import get_prometheus_metrics, update_prometheus_queue, CONTENT_TYPE_LATEST
 from platform_core.modules.builder import ModularBot, ModularBotBuilder
 from platform_core.queue.broker import task_broker
 
@@ -109,6 +110,17 @@ async def health_check():
         "bot_ids": list(BOT_INSTANCES.keys()),
         "pending_queue_length": q_len,
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint scraped by Prometheus server."""
+    try:
+        q_len = await task_broker.get_queue_length()
+        update_prometheus_queue(q_len)
+    except Exception as e:
+        logger.warning(f"Could not update queue metrics on /metrics scrape: {e}")
+    return Response(content=get_prometheus_metrics(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/webhook/{bot_id}")

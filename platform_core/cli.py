@@ -9,11 +9,11 @@ import yaml
 from platform_core.config import settings
 from platform_core.modules.builder import ModularBotBuilder, ModularBot
 
-# Configure structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from platform_core.logging_config import setup_logging
+from platform_core.metrics.prometheus import record_prometheus_event
+
+# Configure structured logging (JSON or text based on LOG_FORMAT env)
+setup_logging()
 logger = logging.getLogger("platform_cli")
 
 INSTANCES_DIR = Path("instances")

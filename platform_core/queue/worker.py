@@ -10,6 +10,7 @@ from aiogram.types import URLInputFile
 from platform_core.db import db, GenerationLog, BotEvent
 from platform_core.generators.base import GenerationRequest
 from platform_core.generators.factory import GeneratorFactory
+from platform_core.metrics.prometheus import record_prometheus_generation
 from platform_core.queue.broker import GenerationJob, TaskQueueBroker, task_broker
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ class AIWorkerPool:
                     pass
 
                 # Record metrics and log transaction
+                record_prometheus_generation(job.bot_id, "success", job.model_name)
                 await db.record_event(
                     BotEvent(
                         bot_id=job.bot_id,
@@ -134,6 +136,7 @@ class AIWorkerPool:
                     telegram_charge_id="refund",
                 )
 
+                record_prometheus_generation(job.bot_id, "failed", job.model_name)
                 await db.record_event(
                     BotEvent(
                         bot_id=job.bot_id,

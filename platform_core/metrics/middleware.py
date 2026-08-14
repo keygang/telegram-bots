@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
 from platform_core.db import db, BotEvent
+from platform_core.metrics.prometheus import record_prometheus_event
 
 
 class MetricsMiddleware(BaseMiddleware):
@@ -31,6 +32,7 @@ class MetricsMiddleware(BaseMiddleware):
         if isinstance(event, Message) and event.from_user:
             event_name = event.text.split()[0] if event.text else "media_upload"
             event_type = "command" if event.text and event.text.startswith("/") else "message"
+            record_prometheus_event(self.bot_id, event_type, event_name, duration_ms)
             await db.record_event(
                 BotEvent(
                     bot_id=self.bot_id,
@@ -41,12 +43,14 @@ class MetricsMiddleware(BaseMiddleware):
                 )
             )
         elif isinstance(event, CallbackQuery) and event.from_user:
+            event_name = event.data or "callback"
+            record_prometheus_event(self.bot_id, "click", event_name, duration_ms)
             await db.record_event(
                 BotEvent(
                     bot_id=self.bot_id,
                     user_id=event.from_user.id,
                     event_type="click",
-                    event_name=event.data or "callback",
+                    event_name=event_name,
                     duration_ms=duration_ms,
                 )
             )
