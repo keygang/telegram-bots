@@ -83,6 +83,52 @@ Once deployed, the Grafana observability dashboard and live log stream can be ac
 
 ---
 
+## Hetzner Cloud API Integration & Token Acquisition
+
+To manage Hetzner Cloud servers and deploy remote infrastructure using the Hetzner API:
+
+### 1. Generating a Hetzner Cloud API Token
+1. Log in to the [Hetzner Cloud Console](https://console.hetzner.cloud/).
+2. Select your Project (or create a new project named `telegram-bots`).
+3. In the left navigation menu, go to **Security** -> **API Tokens**.
+4. Click **Generate API Token**.
+5. Give the token a name (e.g. `github-actions-deploy`) and set permissions to **Read & Write**.
+6. Copy the generated API token (`HCLOUD_TOKEN`).
+
+### 2. Managing Servers via Hetzner REST API / CLI (`hcloud`)
+You can use `curl` or the official Hetzner CLI (`hcloud`) with your token:
+
+```bash
+# List all Hetzner cloud servers
+curl -H "Authorization: Bearer $HCLOUD_TOKEN" "https://api.hetzner.cloud/v1/servers"
+
+# Get details for a specific server by ID
+curl -H "Authorization: Bearer $HCLOUD_TOKEN" "https://api.hetzner.cloud/v1/servers/<SERVER_ID>"
+
+# Create a new server (e.g. CPX21 with Ubuntu 24.04)
+curl -X POST "https://api.hetzner.cloud/v1/servers" \
+  -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "telegram-bots-prod",
+    "server_type": "cpx21",
+    "image": "ubuntu-24.04",
+    "location": "nbg1",
+    "ssh_keys": ["my-ssh-key"]
+  }'
+```
+
+### 3. Configuring Hetzner & SSH Secrets in GitHub Actions
+To enable automated deployments via GitHub Actions to Hetzner:
+1. Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
+2. Add the following repository secrets:
+   - `HCLOUD_TOKEN`: Your Hetzner API Token.
+   - `SERVER_HOST`: The public IPv4 address of your Hetzner server.
+   - `SERVER_USER`: `root` or your deployment user.
+   - `SSH_PRIVATE_KEY`: Private SSH key matching the public key added to your Hetzner server.
+
+---
+
 ## Troubleshooting Deployment Failures
 
 1. **GitHub Actions Failures**:
