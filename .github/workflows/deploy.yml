@@ -1,0 +1,117 @@
+name: Deploy Telegram Bot Instances 🚀
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - dev
+      bot_instance:
+        description: 'Bot Instance to deploy (e.g. "all", "image_bot_1", "image_bot_2")'
+        required: true
+        default: 'all'
+        type: string
+      deploy_strategy:
+        description: 'Deployment Strategy'
+        required: true
+        default: 'docker-compose'
+        type: choice
+        options:
+          - docker-compose
+          - ssh-remote
+          - dry-run-test
+
+jobs:
+  validate-and-test:
+    name: 🧪 Validate Code & Instance Configs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+
+      - name: Run Test Suite
+        run: |
+          uv run pytest
+
+      - name: Validate Bot Instance YAML Configurations
+        run: |
+          uv run python -m platform_core.cli list
+
+  deploy:
+    name: 🚀 Deploy Bot Instances (${{ inputs.bot_instance }})
+    needs: validate-and-test
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        if: ${{ inputs.deploy_strategy != 'dry-run-test' }}
+        uses: docker/setup-buildx-action@v3
+
+      # --- Strategy: Dry Run Test ---
+      - name: Dry Run Test Verification
+        if: ${{ inputs.deploy_strategy == 'dry-run-test' }}
+        run: |
+          echo "✅ Dry Run Deployment Validation Complete."
+          echo "Target Environment: ${{ inputs.environment }}"
+          echo "Bot Instance: ${{ inputs.bot_instance }}"
+
+      # --- Strategy: Docker Compose Local/CI Build ---
+      - name: Build & Test Docker Image
+        if: ${{ inputs.deploy_strategy == 'docker-compose' }}
+        run: |
+          echo "🐳 Building Docker image for commit ${{ github.sha }}..."
+          docker build -t telegram-bots-platform:${{ github.sha }} .
+
+          echo "🔍 Validating container execution with instance list..."
+          docker run --rm telegram-bots-platform:${{ github.sha }} python -m platform_core.cli list
+
+          if [ "${{ inputs.bot_instance }}" = "all" ]; then
+            echo "🚀 Starting all instances with docker-compose..."
+            docker compose config
+          else
+            echo "🚀 Target instance: ${{ inputs.bot_instance }}"
+            docker compose config
+          fi
+
+      # --- Strategy: SSH Remote Deployment ---
+      - name: SSH Remote Deploy to Server
+        if: ${{ inputs.deploy_strategy == 'ssh-remote' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/telegram-bots || exit 1
+            git pull origin main
+            echo "Restarting instance: ${{ inputs.bot_instance }}"
+            if [ "${{ inputs.bot_instance }}" = "all" ]; then
+              docker compose up -d --build
+            else
+              docker compose up -d --build ${{ inputs.bot_instance }}
+            fi
+            docker compose ps

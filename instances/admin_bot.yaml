@@ -1,0 +1,13 @@
+# Configuration for Admin Telegram Bot Instance
+bot_id: "admin_bot"
+token_env: "ADMIN_BOT_TOKEN"
+webhook:
+  enabled: false
+  path: "/webhook/admin_bot"
+constants:
+  bot_title: "Platform Admin Control Bot"
+  language: "en"
+
+modules:
+  - name: "admin_control"
+    enabled: true

@@ -1,0 +1,85 @@
+from pathlib import Path
+import pytest
+from platform_core.modules import (
+    BaseBotModule,
+    ImageGenModule,
+    ModularBotBuilder,
+    MonetizationModule,
+    PresetsModule,
+)
+from platform_core.presets import PromptPreset
+
+
+def test_modules_instantiation():
+    monetization = MonetizationModule()
+    image_gen = ImageGenModule()
+
+    assert monetization.name == "monetization"
+    assert image_gen.name == "image_gen"
+
+    cmds_monetization = monetization.get_bot_commands()
+    assert any(c.command == "buy" for c in cmds_monetization)
+
+    cmds_image = image_gen.get_bot_commands()
+    assert any(c.command == "presets" for c in cmds_image)
+
+
+def test_builder_fluent_assembly():
+    builder = (
+        ModularBotBuilder(bot_id="test_bot", token="123456789:AAA_BBB_CCC")
+        .add_module(MonetizationModule())
+        .add_module(ImageGenModule(default_model="flux-schnell"))
+        .add_preset(
+            PromptPreset(
+                id="inline_preset_1",
+                title="Inline 1",
+                description="Desc 1",
+                prompt_template="Inline {user_prompt}",
+            )
+        )
+    )
+
+    bot_app = builder.build()
+    assert bot_app.bot_id == "test_bot"
+    assert len(bot_app.modules) == 2
+    assert len(bot_app.commands) >= 4
+
+
+def test_builder_from_yaml_config(tmp_path: Path):
+    presets_yaml = tmp_path / "my_presets.yaml"
+    presets_yaml.write_text(
+        """
+presets:
+  - id: "yaml_bot_preset"
+    title: "YAML Bot Preset"
+    description: "YAML Desc"
+    prompt_template: "Template {user_prompt}"
+""",
+        encoding="utf-8",
+    )
+
+    config_yaml = tmp_path / "bot_config.yaml"
+    config_yaml.write_text(
+        f"""
+bot_id: "config_test_bot"
+token: "12345:TOKEN_TEST"
+modules:
+  - name: "monetization"
+    enabled: true
+  - name: "image_gen"
+    enabled: true
+    options:
+      default_model: "flux-schnell"
+  - name: "presets"
+    enabled: true
+    options:
+      file: "{presets_yaml}"
+""",
+        encoding="utf-8",
+    )
+
+    builder = ModularBotBuilder.from_config(config_yaml)
+    bot_app = builder.build()
+
+    assert bot_app.bot_id == "config_test_bot"
+    assert len(bot_app.modules) == 3

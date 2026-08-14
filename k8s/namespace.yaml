@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: telegram-bots
+  labels:
+    app.kubernetes.io/name: telegram-bots-platform
+    app.kubernetes.io/part-of: telegram-bots

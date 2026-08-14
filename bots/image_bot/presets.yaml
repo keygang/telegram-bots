@@ -1,0 +1,33 @@
+presets:
+  - id: "cyberpunk_neon"
+    title: "Cyberpunk Neon"
+    description: "Futuristic neon city character portrait"
+    icon: "🌆"
+    category: "scifi"
+    media_type: "image"
+    prompt_template: "Cyberpunk character portrait of {user_prompt}, vibrant cyan and magenta neon lights, ultra-detailed 8k render"
+    negative_prompt: "blurry, low quality, dark"
+    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    supports_reference_photo: true
+
+  - id: "oil_painting_master"
+    title: "Classic Oil Painting"
+    description: "Renaissance classical oil painting art style"
+    icon: "🖼️"
+    category: "artistic"
+    media_type: "image"
+    prompt_template: "Masterpiece oil painting depicting {user_prompt}, rich textures, dramatic chiaroscuro lighting, Renaissance style"
+    negative_prompt: "digital photo, 3d render, modern, low quality"
+    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    supports_reference_photo: true
+
+  - id: "cinematic_anime"
+    title: "Ghibli Cinematic Anime"
+    description: "Lush Studio Ghibli style watercolor anime aesthetic"
+    icon: "✨"
+    category: "anime"
+    media_type: "image"
+    prompt_template: "Studio Ghibli style watercolor illustration of {user_prompt}, whimsical atmosphere, lush anime aesthetic, Miyazaki art style"
+    negative_prompt: "realistic, photograph, 3d, dark, gritty"
+    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    supports_reference_photo: true

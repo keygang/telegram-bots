@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegram-all-bots
+  namespace: telegram-bots
+  labels:
+    app.kubernetes.io/name: telegram-all-bots
+    app.kubernetes.io/component: bot-runner
+    app.kubernetes.io/part-of: telegram-bots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegram-all-bots
+  template:
+    metadata:
+      labels:
+        app: telegram-all-bots
+        app.kubernetes.io/name: telegram-all-bots
+        app.kubernetes.io/component: bot-runner
+    spec:
+      containers:
+        - name: bot-runner
+          image: telegram-bots-platform:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "platform_core.cli", "start", "all"]
+          envFrom:
+            - configMapRef:
+                name: telegram-bots-config
+            - secretRef:
+                name: telegram-bots-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

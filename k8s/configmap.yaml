@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegram-bots-config
+  namespace: telegram-bots
+  labels:
+    app.kubernetes.io/name: telegram-bots-platform
+data:
+  PYTHONUNBUFFERED: "1"
+  REDIS_URL: "redis://redis.telegram-bots.svc.cluster.local:6379/0"
+  SUPABASE_URL: "http://localhost:8000"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "postgres"
+  POSTGRES_DB: "postgres"
+  FREE_DAILY_CREDITS: "3"
+  DEFAULT_GENERATION_COST_CREDITS: "1"
+  USE_MOCK_GENERATOR: "false"
+  METRICS_ENABLED: "true"
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8000"
+  QUEUE_NAME: "telegram_ai_tasks"

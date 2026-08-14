@@ -1,0 +1,33 @@
+# Configuration for Image Bot Instance #2 (Anime & Fantasy Focus)
+bot_id: "image_bot_2"
+token_env: "IMAGE_BOT_2_TOKEN"
+constants:
+  daily_free_credits: 5
+  default_generation_cost: 1
+  bot_title: "Anime & Fantasy Art Creator"
+  language: "en"
+
+modules:
+  - name: "monetization"
+    enabled: true
+    options:
+      daily_free_credits: 5
+      generation_cost: 1
+  - name: "image_gen"
+    enabled: true
+    options:
+      default_model: "stability-ai/sdxl"
+
+presets:
+  - id: "anime_masterpiece"
+    title: "Anime Masterpiece"
+    description: "Vibrant Japanese anime art style"
+    prompt_template: "Anime artwork, digital painting, vibrant colors, highly detailed, Studio Ghibli inspired, {user_prompt}"
+    category: "Anime"
+    icon: "🎨"
+  - id: "fantasy_realm"
+    title: "Fantasy Realm"
+    description: "Epic high fantasy landscape"
+    prompt_template: "Epic fantasy painting, magical atmosphere, detailed environment, volumetric lighting, {user_prompt}"
+    category: "Fantasy"
+    icon: "🧙‍♂️"

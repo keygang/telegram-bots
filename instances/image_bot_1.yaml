@@ -1,0 +1,34 @@
+# Configuration for Image Bot Instance #1
+bot_id: "image_bot_1"
+token_env: "IMAGE_BOT_1_TOKEN"
+webhook:
+  enabled: true
+  path: "/webhook/image_bot_1"
+constants:
+  daily_free_credits: 3
+  default_generation_cost: 1
+  bot_title: "Standard AI Image Studio"
+  language: "en"
+
+modules:
+  - name: "monetization"
+    enabled: true
+    options:
+      daily_free_credits: 3
+      generation_cost: 1
+  - name: "image_gen"
+    enabled: true
+    options:
+      default_model: "black-forest-labs/flux-schnell"
+  - name: "presets"
+    enabled: true
+    options:
+      file: "../bots/image_bot/presets.yaml"
+
+presets:
+  - id: "cyberpunk_city"
+    title: "Cyberpunk City"
+    description: "Futuristic neon cyberpunk aesthetic"
+    prompt_template: "Futuristic cyberpunk style, glowing neon lights, intricate architectural details, high quality, {user_prompt}"
+    category: "Sci-Fi"
+    icon: "🏙️"

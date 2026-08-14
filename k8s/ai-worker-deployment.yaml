@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-worker
+  namespace: telegram-bots
+  labels:
+    app.kubernetes.io/name: ai-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: telegram-bots
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-worker
+  template:
+    metadata:
+      labels:
+        app: ai-worker
+        app.kubernetes.io/name: ai-worker
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: ai-worker
+          image: telegram-bots-platform:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "platform_core.cli", "worker", "--concurrency", "4"]
+          envFrom:
+            - configMapRef:
+                name: telegram-bots-config
+            - secretRef:
+                name: telegram-bots-secret
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

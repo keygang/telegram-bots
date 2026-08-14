@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: telegram_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  webhook_server:
+    build: .
+    container_name: telegram_webhook_server
+    restart: unless-stopped
+    command: python -m platform_core.cli server --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ai_worker:
+    build: .
+    container_name: telegram_ai_worker
+    restart: unless-stopped
+    command: python -m platform_core.cli worker --concurrency 4
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  all_bots:
+    build: .
+    container_name: telegram_all_bots
+    restart: unless-stopped
+    command: python -m platform_core.cli start all
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  image_bot_1:
+    build: .
+    container_name: telegram_image_bot_1
+    restart: unless-stopped
+    command: python -m platform_core.cli start image_bot_1
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  image_bot_2:
+    build: .
+    container_name: telegram_image_bot_2
+    restart: unless-stopped
+    command: python -m platform_core.cli start image_bot_2
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  admin_bot:
+    build: .
+    container_name: telegram_admin_bot
+    restart: unless-stopped
+    command: python -m platform_core.cli start admin_bot
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

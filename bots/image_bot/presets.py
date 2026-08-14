@@ -1,0 +1,3 @@
+from platform_core.presets.default_presets import DEFAULT_IMAGE_PRESETS
+
+IMAGE_BOT_PRESETS = DEFAULT_IMAGE_PRESETS
