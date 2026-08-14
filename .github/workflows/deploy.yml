@@ -106,6 +106,7 @@ jobs:
             cd /opt/telegram-bots || exit 1
             git pull origin main
             echo "Restarting instance: ${{ inputs.bot_instance || 'all' }}"
+            docker compose down --remove-orphans || true
             docker compose up -d --build --remove-orphans
             docker compose ps
 

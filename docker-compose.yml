@@ -49,11 +49,14 @@ services:
     profiles:
       - all
     command: python -m platform_core.cli start all
+    depends_on:
+      - redis
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -62,11 +65,14 @@ services:
     container_name: telegram_image_bot_1
     restart: unless-stopped
     command: python -m platform_core.cli start image_bot_1
+    depends_on:
+      - redis
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -75,11 +81,14 @@ services:
     container_name: telegram_admin_bot
     restart: unless-stopped
     command: python -m platform_core.cli start admin_bot
+    depends_on:
+      - redis
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
