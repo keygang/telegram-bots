@@ -10,7 +10,7 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
         prompt_template="Heroic portrait of {user_prompt} as an ancient Greek epic warrior from Homer's Odyssey, cinematic lighting, gold-trimmed mythic armor, dramatic Mount Olympus background, 8k resolution",
         category="Popular Legends",
         media_type="image",
-        default_model="black-forest-labs/flux-schnell",
+        default_model="google/gemini-2.5-flash-image",
         supports_reference_photo=True,
     ),
     PromptPreset(
@@ -21,7 +21,7 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
         prompt_template="Epic portrait of {user_prompt} as a famous Hogwarts wizard student, wearing house robes, holding a glowing magical wand, floating magic spell particles, atmospheric Hogwarts castle library",
         category="Popular Legends",
         media_type="image",
-        default_model="black-forest-labs/flux-schnell",
+        default_model="google/gemini-2.5-flash-image",
         supports_reference_photo=True,
     ),
     PromptPreset(
@@ -32,7 +32,7 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
         prompt_template="High-detail Cyberpunk 2077 aesthetic portrait of {user_prompt}, neon reflection, glowing eye cybernetics, rainy night in futuristic Neo-Tokyo street, octane render",
         category="Sci-Fi & Cyber",
         media_type="image",
-        default_model="black-forest-labs/flux-schnell",
+        default_model="google/gemini-2.5-flash-image",
         supports_reference_photo=True,
     ),
     PromptPreset(
@@ -43,7 +43,7 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
         prompt_template="Masterpiece Renaissance oil painting of {user_prompt}, chiaroscuro dramatic lighting, rich canvas texture, detailed clothing in style of Leonardo da Vinci",
         category="Fine Art",
         media_type="image",
-        default_model="black-forest-labs/flux-schnell",
+        default_model="google/gemini-2.5-flash-image",
         supports_reference_photo=True,
     ),
     PromptPreset(
@@ -54,7 +54,7 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
         prompt_template="High octane anime key visual of {user_prompt}, vibrant colors, sharp cell shading, dramatic camera angle, epic fantasy background",
         category="Anime",
         media_type="image",
-        default_model="black-forest-labs/flux-schnell",
+        default_model="google/gemini-2.5-flash-image",
         supports_reference_photo=True,
     ),
 ]

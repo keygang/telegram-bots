@@ -34,7 +34,7 @@ def test_builder_fluent_assembly():
     builder = (
         ModularBotBuilder(bot_id="test_bot", token="123456789:AAA_BBB_CCC")
         .add_module(MonetizationModule())
-        .add_module(ImageGenModule(default_model="flux-schnell"))
+        .add_module(ImageGenModule(default_model="google/gemini-2.5-flash-image"))
         .add_preset(
             PromptPreset(
                 id="inline_preset_1",
@@ -75,7 +75,7 @@ modules:
   - name: "image_gen"
     enabled: true
     options:
-      default_model: "flux-schnell"
+      default_model: "google/gemini-2.5-flash-image"
   - name: "presets"
     enabled: true
     options:

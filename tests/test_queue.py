@@ -14,7 +14,7 @@ async def test_generation_job_serialization():
         chat_id=888,
         status_message_id=777,
         prompt="A cute cyberneticcat",
-        model_name="flux-schnell",
+        model_name="google/gemini-2.5-flash-image",
         cost=1,
     )
 

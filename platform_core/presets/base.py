@@ -15,7 +15,7 @@ class PromptPreset(BaseModel):
     negative_prompt: Optional[str] = "blurry, low quality, distorted face, bad anatomy"
     category: str = "popular"
     media_type: str = "image"  # "image" or "video"
-    default_model: str = "black-forest-labs/flux-schnell"
+    default_model: str = "google/gemini-2.5-flash-image"
     supports_reference_photo: bool = True
     is_active: bool = True
     target_bot_id: Optional[str] = "all"  # "all" or specific bot_id e.g. "image_bot_1"

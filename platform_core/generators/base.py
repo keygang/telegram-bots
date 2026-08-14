@@ -7,7 +7,7 @@ class GenerationRequest(BaseModel):
     """Encapsulates all parameters for an image or video generation job."""
     prompt: str
     negative_prompt: Optional[str] = None
-    model_name: str = "openrouter/black-forest-labs/flux-1-schnell"
+    model_name: str = "google/gemini-2.5-flash-image"
     reference_photo_bytes: Optional[bytes] = None
     reference_photo_url: Optional[str] = None
     media_type: str = "image"  # "image" or "video"

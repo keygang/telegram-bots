@@ -7,7 +7,7 @@ presets:
     media_type: "image"
     prompt_template: "Cyberpunk character portrait of {user_prompt}, vibrant cyan and magenta neon lights, ultra-detailed 8k render"
     negative_prompt: "blurry, low quality, dark"
-    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
   - id: "oil_painting_master"
@@ -18,7 +18,7 @@ presets:
     media_type: "image"
     prompt_template: "Masterpiece oil painting depicting {user_prompt}, rich textures, dramatic chiaroscuro lighting, Renaissance style"
     negative_prompt: "digital photo, 3d render, modern, low quality"
-    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
   - id: "cinematic_anime"
@@ -29,5 +29,5 @@ presets:
     media_type: "image"
     prompt_template: "Studio Ghibli style watercolor illustration of {user_prompt}, whimsical atmosphere, lush anime aesthetic, Miyazaki art style"
     negative_prompt: "realistic, photograph, 3d, dark, gritty"
-    default_model: "openrouter/black-forest-labs/flux-1-schnell"
+    default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true

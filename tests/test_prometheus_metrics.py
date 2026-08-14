@@ -16,7 +16,7 @@ def test_prometheus_metrics_record_and_generate():
     
     record_prometheus_event(bot_id, "command", "/start", duration_ms=45.0)
     record_prometheus_event(bot_id, "click", "preset:cyberpunk", duration_ms=12.0)
-    record_prometheus_generation(bot_id, "success", "flux-schnell")
+    record_prometheus_generation(bot_id, "success", "google/gemini-2.5-flash-image")
     record_prometheus_stars(bot_id, amount=15)
     update_prometheus_queue(7)
 

@@ -16,7 +16,7 @@ class ImageGenModule(BaseBotModule):
 
     def __init__(
         self,
-        default_model: str = "black-forest-labs/flux-schnell",
+        default_model: str = "google/gemini-2.5-flash-image",
         custom_presets: Optional[List[PromptPreset]] = None,
         **_kwargs: Any,
     ):

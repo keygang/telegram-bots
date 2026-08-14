@@ -31,7 +31,7 @@ async def test_metrics_recording_and_summary():
         GenerationLog(
             bot_id=bot_id,
             user_id=user_id,
-            model_name="flux-schnell",
+            model_name="google/gemini-2.5-flash-image",
             prompt="Hero Odyssey",
             preset_id="odyssey",
             status="success",

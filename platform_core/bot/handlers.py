@@ -44,7 +44,7 @@ async def run_generation_job(
     preset_id: Optional[str] = None,
     reference_photo_bytes: Optional[bytes] = None,
     media_type: str = "image",
-    model_name: str = "black-forest-labs/flux-schnell",
+    model_name: str = "google/gemini-2.5-flash-image",
     bot_id: str = "default_bot",
     force_mock: bool = False,
     use_queue: bool = True,

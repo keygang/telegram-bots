@@ -20,7 +20,7 @@ modules:
   - name: "image_gen"
     enabled: true
     options:
-      default_model: "black-forest-labs/flux-schnell"
+      default_model: "google/gemini-2.5-flash-image"
   - name: "presets"
     enabled: true
     options:

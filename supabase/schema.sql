@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS public.preset_prompts (
     prompt_template TEXT NOT NULL,
     category TEXT DEFAULT 'popular',
     media_type TEXT DEFAULT 'image',
-    default_model TEXT DEFAULT 'black-forest-labs/flux-schnell',
+    default_model TEXT DEFAULT 'google/gemini-2.5-flash-image',
     supports_reference_photo BOOLEAN DEFAULT TRUE,
     is_active BOOLEAN DEFAULT TRUE,
     target_bot_id TEXT DEFAULT 'all',

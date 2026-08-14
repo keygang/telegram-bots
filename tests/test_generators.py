@@ -42,7 +42,7 @@ async def test_unified_generator_openrouter():
 
         req = GenerationRequest(
             prompt="A majestic lion on a cliff",
-            model_name="openrouter/black-forest-labs/flux-1-schnell",
+            model_name="openrouter/google/gemini-2.5-flash-image",
             width=1024,
             height=1024,
         )
@@ -51,10 +51,10 @@ async def test_unified_generator_openrouter():
         assert res.status == "success"
         assert res.media_urls == ["https://openrouter.ai/generated_image.png"]
         assert res.metadata["provider"] == "openrouter"
-        assert res.metadata["model"] == "openrouter/black-forest-labs/flux-1-schnell"
+        assert res.metadata["model"] == "openrouter/google/gemini-2.5-flash-image"
 
         mock_aimage_gen.assert_called_once_with(
-            model="openrouter/black-forest-labs/flux-1-schnell",
+            model="openrouter/google/gemini-2.5-flash-image",
             prompt="A majestic lion on a cliff",
             n=1,
             size="1024x1024",

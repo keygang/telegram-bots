@@ -20,7 +20,7 @@ async def run_image_bot(force_mock: bool = False):
     builder = (
         ModularBotBuilder(bot_id="image_bot", token=settings.IMAGE_BOT_TOKEN)
         .add_module(MonetizationModule())
-        .add_module(ImageGenModule(default_model="openrouter/black-forest-labs/flux-1-schnell"))
+        .add_module(ImageGenModule(default_model="google/gemini-2.5-flash-image"))
     )
 
     if presets_yaml.exists():

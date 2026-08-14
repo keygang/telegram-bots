@@ -19,7 +19,7 @@ presets:
     category: "scifi"
     media_type: "image"
     prompt_template: "Cyberpunk style {user_prompt}"
-    default_model: "flux-schnell"
+    default_model: "google/gemini-2.5-flash-image"
 """
 
 
