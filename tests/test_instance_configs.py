@@ -9,7 +9,7 @@ def test_instances_directory_configs_exist():
     assert len(configs) >= 2
     stems = [c.stem for c in configs]
     assert "image_bot_1" in stems
-    assert "image_bot_2" in stems
+    assert "admin_bot" in stems
 
 
 def test_load_image_bot_1_config():
@@ -26,17 +26,17 @@ def test_load_image_bot_1_config():
     assert bot_app.constants.get("daily_free_credits") == 3
 
 
-def test_load_image_bot_2_inline_presets():
-    path = resolve_config_path("image_bot_2")
+def test_load_admin_bot_config():
+    path = resolve_config_path("admin_bot")
     assert path is not None and path.exists()
 
     builder = ModularBotBuilder.from_config(path)
-    assert builder.bot_id == "image_bot_2"
-    assert len(builder._custom_presets) == 2
-    assert builder._custom_presets[0].id == "anime_masterpiece"
-    assert builder._custom_presets[1].id == "fantasy_realm"
+    assert builder.bot_id == "admin_bot"
+    assert builder.constants.get("bot_title") == "Platform Admin Control Bot"
 
 
 def test_resolve_config_path_variants():
     assert resolve_config_path("image_bot_1") == Path("instances/image_bot_1.yaml")
+    assert resolve_config_path("admin_bot") == Path("instances/admin_bot.yaml")
     assert resolve_config_path("non_existent_bot") is None
+

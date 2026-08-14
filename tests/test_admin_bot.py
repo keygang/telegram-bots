@@ -122,3 +122,15 @@ async def test_admin_preset_management_handlers():
     await cb_preset_del_do(cb_del)
     deleted = await preset_manager.get_preset_by_id("adm_test_1")
     assert deleted is None
+
+
+def test_build_main_admin_keyboard():
+    from bots.admin_bot.bot import build_main_admin_keyboard
+    kb = build_main_admin_keyboard()
+    assert kb.inline_keyboard
+    for row in kb.inline_keyboard:
+        for button in row:
+            assert button.text
+            assert button.callback_data is not None
+            assert len(button.callback_data) > 0
+

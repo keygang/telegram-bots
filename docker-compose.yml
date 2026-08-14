@@ -46,6 +46,8 @@ services:
     build: .
     container_name: telegram_all_bots
     restart: unless-stopped
+    profiles:
+      - all
     command: python -m platform_core.cli start all
     env_file:
       - .env
@@ -60,19 +62,6 @@ services:
     container_name: telegram_image_bot_1
     restart: unless-stopped
     command: python -m platform_core.cli start image_bot_1
-    env_file:
-      - .env
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_FORMAT=json
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  image_bot_2:
-    build: .
-    container_name: telegram_image_bot_2
-    restart: unless-stopped
-    command: python -m platform_core.cli start image_bot_2
     env_file:
       - .env
     environment:

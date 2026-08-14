@@ -9,9 +9,10 @@ WORKDIR /app
 # Copy dependency configs
 COPY pyproject.toml README.md .env.example ./
 
-# Copy source code
+# Copy source code & bot instances
 COPY platform_core ./platform_core
 COPY bots ./bots
+COPY instances ./instances
 
 # Install dependencies using uv
 RUN uv venv .venv && \

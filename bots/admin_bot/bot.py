@@ -70,15 +70,15 @@ def build_main_admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎨 Manage Presets", callback_query_data="admin_presets_list"),
-                InlineKeyboardButton(text="➕ Add Preset", callback_query_data="admin_preset_add"),
+                InlineKeyboardButton(text="🎨 Manage Presets", callback_data="admin_presets_list"),
+                InlineKeyboardButton(text="➕ Add Preset", callback_data="admin_preset_add"),
             ],
             [
-                InlineKeyboardButton(text="🔄 Seed Default Presets", callback_query_data="admin_preset_seed"),
-                InlineKeyboardButton(text="🤖 Bot Instances", callback_query_data="admin_instances_list"),
+                InlineKeyboardButton(text="🔄 Seed Default Presets", callback_data="admin_preset_seed"),
+                InlineKeyboardButton(text="🤖 Bot Instances", callback_data="admin_instances_list"),
             ],
             [
-                InlineKeyboardButton(text="📊 System Analytics", callback_query_data="admin_analytics"),
+                InlineKeyboardButton(text="📊 System Analytics", callback_data="admin_analytics"),
             ],
         ]
     )
@@ -120,7 +120,7 @@ async def cb_presets_list(query: CallbackQuery):
 
     if not presets:
         text = "🎨 <b>NoSQL Prompt Presets</b>\n\nNo presets found in the database store."
-        buttons = [[InlineKeyboardButton(text="🔄 Seed Defaults", callback_query_data="admin_preset_seed")]]
+        buttons = [[InlineKeyboardButton(text="🔄 Seed Defaults", callback_data="admin_preset_seed")]]
     else:
         text = (
             f"🎨 <b>NoSQL Prompt Presets ({len(presets)} total)</b>\n"
@@ -132,11 +132,11 @@ async def cb_presets_list(query: CallbackQuery):
             status_icon = "🟢" if p.is_active else "🔴"
             target = f"[{p.target_bot_id}]" if p.target_bot_id and p.target_bot_id != "all" else "[ALL]"
             btn_text = f"{status_icon} {p.icon} {p.title} {target}"
-            buttons.append([InlineKeyboardButton(text=btn_text, callback_query_data=f"pdetail:{p.id}")])
+            buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"pdetail:{p.id}")])
 
     buttons.append([
-        InlineKeyboardButton(text="➕ Add Preset", callback_query_data="admin_preset_add"),
-        InlineKeyboardButton(text="⬅️ Main Menu", callback_query_data="admin_menu")
+        InlineKeyboardButton(text="➕ Add Preset", callback_data="admin_preset_add"),
+        InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu")
     ])
 
     await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")
@@ -174,12 +174,12 @@ async def cb_preset_detail(query: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=toggle_label, callback_query_data=f"ptoggle:{preset.id}:{toggle_target}"),
-                InlineKeyboardButton(text="🗑️ Delete", callback_query_data=f"pdel_confirm:{preset.id}"),
+                InlineKeyboardButton(text=toggle_label, callback_data=f"ptoggle:{preset.id}:{toggle_target}"),
+                InlineKeyboardButton(text="🗑️ Delete", callback_data=f"pdel_confirm:{preset.id}"),
             ],
             [
-                InlineKeyboardButton(text="📋 Back to Presets", callback_query_data="admin_presets_list"),
-                InlineKeyboardButton(text="⬅️ Main Menu", callback_query_data="admin_menu"),
+                InlineKeyboardButton(text="📋 Back to Presets", callback_data="admin_presets_list"),
+                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
             ],
         ]
     )
@@ -216,8 +216,8 @@ async def cb_preset_del_confirm(query: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Yes, Delete", callback_query_data=f"pdel_do:{preset_id}"),
-                InlineKeyboardButton(text="❌ Cancel", callback_query_data=f"pdetail:{preset_id}"),
+                InlineKeyboardButton(text="✅ Yes, Delete", callback_data=f"pdel_do:{preset_id}"),
+                InlineKeyboardButton(text="❌ Cancel", callback_data=f"pdetail:{preset_id}"),
             ]
         ]
     )
@@ -257,7 +257,7 @@ async def cb_start_add_preset(query: CallbackQuery, state: FSMContext):
         "───────────────────────────────\n"
         "Enter a unique <b>Preset ID</b> (slug format, e.g. <code>cyberpunk_neon</code>):"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel", callback_query_data="admin_presets_list")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel", callback_data="admin_presets_list")]])
     await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await query.answer()
 
@@ -339,8 +339,8 @@ async def process_preset_target_bot(message: Message, state: FSMContext):
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎨 View Presets", callback_query_data="admin_presets_list")],
-            [InlineKeyboardButton(text="⬅️ Main Menu", callback_query_data="admin_menu")],
+            [InlineKeyboardButton(text="🎨 View Presets", callback_data="admin_presets_list")],
+            [InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu")],
         ]
     )
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -370,7 +370,7 @@ async def cb_instances_list(query: CallbackQuery):
         except Exception as e:
             text += f"• ❌ Error reading <code>{cfg_path.name}</code>: {e}\n\n"
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Main Menu", callback_query_data="admin_menu")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu")]])
     await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await query.answer()
 
@@ -397,7 +397,7 @@ async def cb_analytics(query: CallbackQuery):
         f"<b>NoSQL Presets Store:</b> Supabase JSONB Connected\n"
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Main Menu", callback_query_data="admin_menu")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu")]])
     await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await query.answer()
 
