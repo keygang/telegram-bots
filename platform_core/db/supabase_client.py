@@ -27,11 +27,16 @@ class SupabaseManager:
         self._in_memory_generations: List[GenerationLog] = []
 
         if settings.SUPABASE_URL and settings.SUPABASE_KEY:
-            try:
-                self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-                logger.info(f"Successfully initialized Supabase PostgreSQL client ({settings.SUPABASE_URL}).")
-            except Exception as e:
-                logger.warning(f"Failed to connect to Supabase ({settings.SUPABASE_URL}): {e}. Falling back to in-memory store.")
+            is_placeholder_url = "localhost" in settings.SUPABASE_URL or "your-project" in settings.SUPABASE_URL
+            is_placeholder_key = "your-self-hosted" in settings.SUPABASE_KEY or "your-supabase" in settings.SUPABASE_KEY
+            if is_placeholder_url and is_placeholder_key:
+                logger.info(f"Supabase credentials appear to be placeholder defaults ({settings.SUPABASE_URL}). Using in-memory store.")
+            else:
+                try:
+                    self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                    logger.info(f"Successfully initialized Supabase PostgreSQL client ({settings.SUPABASE_URL}).")
+                except Exception as e:
+                    logger.warning(f"Failed to connect to Supabase ({settings.SUPABASE_URL}): {e}. Falling back to in-memory store.")
 
     # --- USER PROFILE OPERATIONS ---
 

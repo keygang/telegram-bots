@@ -93,16 +93,30 @@ async def test_unified_generator_auto_prefixes_openrouter():
 
 
 @pytest.mark.asyncio
-async def test_unified_generator_failure_handling():
+async def test_unified_generator_chat_completion_fallback():
     unified_gen = UnifiedMediaGenerator()
 
-    with patch("litellm.aimage_generation", side_effect=RuntimeError("API connection error")):
+    mock_msg = MagicMock()
+    mock_msg.images = [{"image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}}]
+    mock_msg.content = "Here is your generated image"
+    mock_choice = MagicMock()
+    mock_choice.message = mock_msg
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    with patch("litellm.aimage_generation", side_effect=RuntimeError("Endpoint not supported")), \
+         patch("litellm.acompletion", return_value=mock_response) as mock_acompletion:
+
         req = GenerationRequest(
-            prompt="Anime character",
-            model_name="stability-ai/sdxl",
+            prompt="Heroic Greek warrior",
+            model_name="google/gemini-2.5-flash-image",
         )
         res = await unified_gen.generate(req)
 
-        assert res.status == "failed"
-        assert "API connection error" in res.error_message
+        assert res.status == "success"
+        assert res.media_bytes is not None
+        assert res.metadata["model"] == "openrouter/google/gemini-2.5-flash-image"
+        mock_acompletion.assert_called_once()
+
+
 

@@ -6,7 +6,7 @@ import sys
 import time
 from typing import Optional
 from aiogram import Bot
-from aiogram.types import URLInputFile
+from aiogram.types import BufferedInputFile, URLInputFile
 from platform_core.db import db, GenerationLog, BotEvent
 from platform_core.generators.base import GenerationRequest
 from platform_core.generators.factory import GeneratorFactory
@@ -31,7 +31,7 @@ class AIWorkerPool:
         self.broker = broker or task_broker
         self.concurrency = concurrency
         self.force_mock = force_mock
-        self._running = False
+        self.is_running = False
         self._tasks = []
 
     async def process_job(self, job: GenerationJob):
@@ -62,22 +62,28 @@ class AIWorkerPool:
 
             res = await generator.generate(gen_req)
 
-            if res.status == "success" and res.media_urls:
-                media_url = res.media_urls[0]
+            if res.status == "success" and (res.media_urls or res.media_bytes):
                 caption = f"✨ *{job.prompt}*\n\n🤖 _Model: {job.model_name}_"
+
+                if res.media_bytes:
+                    media_input = BufferedInputFile(res.media_bytes, filename="generated.png")
+                    media_url_logged = "bytes://generated.png"
+                else:
+                    media_input = URLInputFile(res.media_urls[0])
+                    media_url_logged = res.media_urls[0]
 
                 # Send media to user
                 if job.media_type == "video":
                     await bot.send_video(
                         chat_id=job.chat_id,
-                        video=URLInputFile(media_url),
+                        video=media_input,
                         caption=caption,
                         parse_mode="Markdown",
                     )
                 else:
                     await bot.send_photo(
                         chat_id=job.chat_id,
-                        photo=URLInputFile(media_url),
+                        photo=media_input,
                         caption=caption,
                         parse_mode="Markdown",
                     )
@@ -105,7 +111,7 @@ class AIWorkerPool:
                         user_id=job.user_id,
                         model_name=job.model_name,
                         prompt=job.prompt,
-                        media_url=media_url,
+                        media_url=media_url_logged,
                         status="success",
                         duration_ms=res.duration_ms,
                     )

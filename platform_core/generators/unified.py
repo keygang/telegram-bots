@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 import litellm
@@ -18,7 +19,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
     """
     Unified Multi-Provider Media Generator powered by LiteLLM gateway.
     Primary image generation provider is OpenRouter via LiteLLM.
-    Routes requests to OpenRouter (FLUX, Imagen 3, Stable Diffusion, Recraft),
+    Routes requests to OpenRouter (FLUX, Imagen 3, Stable Diffusion, Recraft, Gemini),
     OpenAI (DALL-E 3), Fal.ai, or custom LiteLLM proxy endpoints.
     """
 
@@ -37,6 +38,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
         # Resolve OpenRouter API Key
         openrouter_api_key = settings.OPENROUTER_API_KEY or os.environ.get("OPENROUTER_API_KEY")
 
+        # 1. Try standard aimage_generation
         try:
             gen_kwargs: Dict[str, Any] = {
                 "model": target_model,
@@ -51,7 +53,6 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             if request.extra_params:
                 gen_kwargs.update(request.extra_params)
 
-            # Execute unified image generation via LiteLLM API
             response = await litellm.aimage_generation(**gen_kwargs)
 
             urls: List[str] = []
@@ -69,13 +70,80 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                             metadata={"provider": "openrouter", "model": target_model}
                         )
 
-            duration_ms = int((time.time() - start_time) * 1000)
-            return GenerationResponse(
-                status="success" if urls else "failed",
-                media_urls=urls,
-                duration_ms=duration_ms,
-                metadata={"provider": "openrouter", "model": target_model}
-            )
+            if urls:
+                duration_ms = int((time.time() - start_time) * 1000)
+                return GenerationResponse(
+                    status="success",
+                    media_urls=urls,
+                    duration_ms=duration_ms,
+                    metadata={"provider": "openrouter", "model": target_model}
+                )
+
+        except Exception as e:
+            logger.info(f"aimage_generation direct call failed for {target_model} ({e}), trying chat completion fallback...")
+
+        # 2. Fallback to acompletion for multimodal/chat-based image models (e.g. OpenRouter Gemini)
+        try:
+            comp_kwargs: Dict[str, Any] = {
+                "model": target_model,
+                "messages": [{"role": "user", "content": f"Generate an image based on this description: {request.prompt}"}],
+            }
+            if target_model.lower().startswith("openrouter/") and openrouter_api_key:
+                comp_kwargs["api_key"] = openrouter_api_key
+
+            comp = await litellm.acompletion(**comp_kwargs)
+            if comp.choices and comp.choices[0].message:
+                msg = comp.choices[0].message
+                
+                # Check message.images
+                images = getattr(msg, "images", None) or []
+                if images:
+                    for img_item in images:
+                        url = None
+                        if isinstance(img_item, dict):
+                            url = img_item.get("image_url", {}).get("url") or img_item.get("url")
+                        elif hasattr(img_item, "image_url"):
+                            url = getattr(img_item.image_url, "url", None)
+                        if url:
+                            if url.startswith("data:image/"):
+                                b64_str = url.split(",", 1)[1]
+                                duration_ms = int((time.time() - start_time) * 1000)
+                                return GenerationResponse(
+                                    status="success",
+                                    media_bytes=base64.b64decode(b64_str),
+                                    duration_ms=duration_ms,
+                                    metadata={"provider": "openrouter", "model": target_model}
+                                )
+                            elif url.startswith("http"):
+                                duration_ms = int((time.time() - start_time) * 1000)
+                                return GenerationResponse(
+                                    status="success",
+                                    media_urls=[url],
+                                    duration_ms=duration_ms,
+                                    metadata={"provider": "openrouter", "model": target_model}
+                                )
+
+                # Check message.content for base64 or HTTP URL
+                content = msg.content or ""
+                match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", content)
+                if match:
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    return GenerationResponse(
+                        status="success",
+                        media_bytes=base64.b64decode(match.group(1)),
+                        duration_ms=duration_ms,
+                        metadata={"provider": "openrouter", "model": target_model}
+                    )
+
+                url_match = re.search(r"https?://[^\s\"\')]+\.(?:png|jpg|jpeg|webp)", content)
+                if url_match:
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    return GenerationResponse(
+                        status="success",
+                        media_urls=[url_match.group(0)],
+                        duration_ms=duration_ms,
+                        metadata={"provider": "openrouter", "model": target_model}
+                    )
 
         except Exception as e:
             logger.error(
@@ -89,3 +157,12 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                 duration_ms=duration_ms,
                 metadata={"provider": "openrouter", "model": target_model},
             )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        return GenerationResponse(
+            status="failed",
+            error_message=f"No image data returned from provider for model '{target_model}'",
+            duration_ms=duration_ms,
+            metadata={"provider": "openrouter", "model": target_model},
+        )
+

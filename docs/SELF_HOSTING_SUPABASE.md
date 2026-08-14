@@ -74,12 +74,12 @@ docker compose ps
 
 You should see containers for:
 - `supabase-db` (PostgreSQL Database on port `5432`)
-- `supabase-kong` (API Gateway on port `8000`)
-- `supabase-studio` (Dashboard UI on port `3000` / `8000/dashboard`)
+- `supabase-kong` (API Gateway on port `8001` - changed from `8000` to avoid conflict with Webhook Server)
+- `supabase-studio` (Dashboard UI on port `8082` - changed from `3000` to avoid conflict with Grafana)
 - `supabase-rest` (PostgREST API)
 - `supabase-auth` (GoTrue Auth)
 
-Access Supabase Studio by opening `http://localhost:3000` or `http://<YOUR_SERVER_IP>:8000` in your web browser.
+Access Supabase Studio by opening `http://localhost:8082` (or `http://<YOUR_SERVER_IP>:8082`) in your web browser.
 
 ---
 
@@ -88,7 +88,7 @@ Access Supabase Studio by opening `http://localhost:3000` or `http://<YOUR_SERVE
 You need to execute the SQL schema script to create the necessary tables (`users`, `user_balances`, `star_transactions`, `bot_events`, `generation_logs`).
 
 ### Option A: Via Supabase Studio UI (Recommended)
-1. Open Supabase Studio in your browser (`http://localhost:3000`).
+1. Open Supabase Studio in your browser (`http://localhost:8082`).
 2. Go to **SQL Editor** -> **New Query**.
 3. Copy and paste the contents of [`supabase/schema.sql`](../supabase/schema.sql).
 4. Click **Run**.
@@ -107,8 +107,8 @@ docker exec -i supabase-db psql -U postgres -d postgres < /path/to/telegram-bots
 Update your `.env` file in the root directory of this repository:
 
 ```env
-# Self-Hosted Supabase API Gateway URL (Kong)
-SUPABASE_URL=http://localhost:8000
+# Self-Hosted Supabase API Gateway URL (Kong) - Port 8001
+SUPABASE_URL=http://localhost:8001
 
 # Service Role Key or Anon Key generated in Step 2 (from supabase/docker/.env)
 SUPABASE_KEY=your_generated_service_role_key_here
@@ -122,7 +122,7 @@ POSTGRES_DB=postgres
 DATABASE_URL=postgresql://postgres:your_secure_postgres_password@localhost:5432/postgres
 ```
 
-If your bot runs inside Docker via `docker-compose.yml` on the same host, you can use `http://host.docker.internal:8000` or join the shared Docker network.
+If your bot runs inside Docker via `docker-compose.yml` on the same host, you can use `http://host.docker.internal:8001` or join the shared Docker network.
 
 ---
 
