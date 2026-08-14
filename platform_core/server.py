@@ -41,21 +41,26 @@ async def initialize_bot_instances():
                     logger.warning(f"Could not set commands for {bot_app.bot_id}: {e}")
 
             BOT_INSTANCES[bot_app.bot_id] = bot_app
-            logger.info(f"Loaded bot instance [{bot_app.bot_id}] for Webhook Server")
+            logger.info(f"Loaded bot instance [{bot_app.bot_id}] (Strategy: {bot_app.strategy})")
 
-            # Setup Telegram Webhook if WEBHOOK_BASE_URL is configured
-            if settings.WEBHOOK_BASE_URL:
-                webhook_url = f"{settings.WEBHOOK_BASE_URL.rstrip('/')}/webhook/{bot_app.bot_id}"
-                secret_token = settings.WEBHOOK_SECRET_TOKEN
-                try:
-                    await bot_app.bot.set_webhook(
-                        url=webhook_url,
-                        secret_token=secret_token,
-                        drop_pending_updates=True,
-                    )
-                    logger.info(f"🌐 Webhook set for [{bot_app.bot_id}] -> {webhook_url}")
-                except Exception as e:
-                    logger.error(f"Failed to set webhook for [{bot_app.bot_id}]: {e}")
+            # Setup Telegram Webhook if strategy is 'webhook' and WEBHOOK_BASE_URL is configured
+            if bot_app.strategy == "webhook":
+                if settings.WEBHOOK_BASE_URL:
+                    webhook_url = f"{settings.WEBHOOK_BASE_URL.rstrip('/')}/webhook/{bot_app.bot_id}"
+                    secret_token = settings.WEBHOOK_SECRET_TOKEN
+                    try:
+                        await bot_app.bot.set_webhook(
+                            url=webhook_url,
+                            secret_token=secret_token,
+                            drop_pending_updates=True,
+                        )
+                        logger.info(f"🌐 Webhook set for [{bot_app.bot_id}] -> {webhook_url}")
+                    except Exception as e:
+                        logger.error(f"Failed to set webhook for [{bot_app.bot_id}]: {e}")
+                else:
+                    logger.warning(f"Bot [{bot_app.bot_id}] uses webhook strategy, but WEBHOOK_BASE_URL is not set.")
+            else:
+                logger.info(f"ℹ️ Bot [{bot_app.bot_id}] is configured for POLLING strategy (skipping server webhook registration).")
 
         except Exception as e:
             logger.error(f"Failed to initialize bot instance from {cfg_path}: {e}")

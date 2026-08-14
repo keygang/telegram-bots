@@ -39,6 +39,7 @@ class ModularBot:
         modules: List[BaseBotModule],
         commands: List[BotCommand],
         constants: Optional[Dict[str, Any]] = None,
+        strategy: Optional[str] = None,
     ):
         self.bot = bot
         self.dp = dp
@@ -46,10 +47,11 @@ class ModularBot:
         self.modules = modules
         self.commands = commands
         self.constants = constants or {}
+        self.strategy = (strategy or settings.BOT_STRATEGY).lower()
 
     async def run(self, force_mock: bool = False) -> None:
         """
-        Executes startup hooks, registers bot menu commands, and starts Telegram polling loop.
+        Executes startup hooks, registers bot menu commands, and starts Telegram polling loop or webhook setup based on strategy.
         """
         # Execute startup hooks for all modules
         for mod in self.modules:
@@ -63,9 +65,32 @@ class ModularBot:
             except Exception as e:
                 logger.warning(f"Could not set bot commands for {self.bot_id}: {e}")
 
-        logger.info(f"🤖 Modular Telegram Bot [{self.bot_id}] starting polling loop...")
         try:
-            await self.dp.start_polling(self.bot, bot_id=self.bot_id, force_mock=force_mock)
+            if self.strategy == "webhook":
+                logger.info(f"🌐 Modular Telegram Bot [{self.bot_id}] configured for WEBHOOK strategy.")
+                if settings.WEBHOOK_BASE_URL:
+                    webhook_url = f"{settings.WEBHOOK_BASE_URL.rstrip('/')}/webhook/{self.bot_id}"
+                    secret_token = settings.WEBHOOK_SECRET_TOKEN
+                    try:
+                        await self.bot.set_webhook(
+                            url=webhook_url,
+                            secret_token=secret_token,
+                            drop_pending_updates=True,
+                        )
+                        logger.info(f"🌐 Webhook set for [{self.bot_id}] -> {webhook_url}")
+                    except Exception as e:
+                        logger.error(f"Failed to set webhook for [{self.bot_id}]: {e}")
+                else:
+                    logger.warning(f"Webhook strategy enabled for [{self.bot_id}], but WEBHOOK_BASE_URL is not set.")
+            else:
+                logger.info(f"🤖 Modular Telegram Bot [{self.bot_id}] starting POLLING loop...")
+                try:
+                    await self.bot.delete_webhook(drop_pending_updates=True)
+                    logger.info(f"Cleared webhooks for [{self.bot_id}] prior to long polling.")
+                except Exception as e:
+                    logger.debug(f"Could not clear webhook for [{self.bot_id}]: {e}")
+
+                await self.dp.start_polling(self.bot, bot_id=self.bot_id, force_mock=force_mock)
         finally:
             for mod in self.modules:
                 await mod.on_shutdown(self.bot, self.dp)
@@ -77,9 +102,10 @@ class ModularBotBuilder:
     Fluent builder for creating modular Telegram bot instances.
     """
 
-    def __init__(self, bot_id: str, token: Optional[str] = None):
+    def __init__(self, bot_id: str, token: Optional[str] = None, strategy: Optional[str] = None):
         self.bot_id = bot_id
         self.token = token
+        self.strategy = strategy
         self.constants: Dict[str, Any] = {}
         self._modules: List[BaseBotModule] = []
         self._custom_presets: List[PromptPreset] = []
@@ -123,7 +149,13 @@ class ModularBotBuilder:
         token_env = cfg.get("token_env")
         token = cfg.get("token") or (os.getenv(token_env) if token_env else None)
 
-        builder = cls(bot_id=bot_id, token=token)
+        strat = cfg.get("strategy")
+        if not strat:
+            webhook_cfg = cfg.get("webhook", {})
+            if isinstance(webhook_cfg, dict) and "enabled" in webhook_cfg:
+                strat = "webhook" if webhook_cfg["enabled"] else "polling"
+
+        builder = cls(bot_id=bot_id, token=token, strategy=strat)
         builder.constants = cfg.get("constants", {})
 
         # Parse modules
@@ -233,4 +265,5 @@ class ModularBotBuilder:
             modules=self._modules,
             commands=aggregated_commands,
             constants=self.constants,
+            strategy=self.strategy,
         )

@@ -57,7 +57,8 @@ class PlatformSettings(BaseSettings):
     USE_MOCK_GENERATOR: bool = False
     METRICS_ENABLED: bool = True
 
-    # Webhook Gateway & Redis Settings
+    # Strategy & Gateway Settings
+    BOT_STRATEGY: str = "polling"  # "polling" or "webhook"
     REDIS_URL: Optional[str] = "redis://localhost:6379/0"
     WEBHOOK_BASE_URL: Optional[str] = None
     WEBHOOK_SECRET_TOKEN: Optional[str] = "secret_webhook_token_123"

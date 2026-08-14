@@ -1,5 +1,6 @@
 # Configuration for Admin Telegram Bot Instance
 bot_id: "admin_bot"
+strategy: "polling"
 token_env: "ADMIN_BOT_TOKEN"
 webhook:
   enabled: false

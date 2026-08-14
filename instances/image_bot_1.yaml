@@ -1,8 +1,9 @@
 # Configuration for Image Bot Instance #1
 bot_id: "image_bot_1"
+strategy: "polling"
 token_env: "IMAGE_BOT_1_TOKEN"
 webhook:
-  enabled: true
+  enabled: false
   path: "/webhook/image_bot_1"
 constants:
   daily_free_credits: 3

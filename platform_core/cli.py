@@ -58,10 +58,18 @@ def list_instances():
                 data = yaml.safe_load(f) or {}
             bot_id = data.get("bot_id", cfg_path.stem)
             token_env = data.get("token_env", "N/A")
+            strat = data.get("strategy")
+            if not strat:
+                webhook_cfg = data.get("webhook", {})
+                if isinstance(webhook_cfg, dict) and "enabled" in webhook_cfg:
+                    strat = "webhook" if webhook_cfg["enabled"] else "polling"
+                else:
+                    strat = settings.BOT_STRATEGY
             modules = [m.get("name") for m in data.get("modules", []) if isinstance(m, dict) and m.get("enabled", True)]
             preset_count = len(data.get("presets", []))
             print(f"  • Bot ID      : {bot_id}")
             print(f"    Config Path : {cfg_path}")
+            print(f"    Strategy    : {strat.upper()}")
             print(f"    Token Env   : {token_env}")
             print(f"    Modules     : {', '.join(modules) if modules else 'None'}")
             print(f"    Presets     : {preset_count} inline preset(s)")
@@ -70,15 +78,17 @@ def list_instances():
             print(f"  ❌ Error reading {cfg_path}: {e}")
 
 
-async def run_bot_instance(config_path: Path, force_mock: bool = False):
-    """Loads a bot instance from YAML config and starts polling."""
+async def run_bot_instance(config_path: Path, force_mock: bool = False, strategy: Optional[str] = None):
+    """Loads a bot instance from YAML config and starts instance."""
     logger.info(f"Loading bot instance from configuration: {config_path}")
     builder = ModularBotBuilder.from_config(config_path)
+    if strategy:
+        builder.strategy = strategy
     bot_app = builder.build()
     await bot_app.run(force_mock=force_mock)
 
 
-async def run_all_instances(force_mock: bool = False):
+async def run_all_instances(force_mock: bool = False, strategy: Optional[str] = None):
     """Loads and starts all configured bot instances concurrently."""
     configs = get_instance_config_files()
     if configs:
@@ -87,6 +97,8 @@ async def run_all_instances(force_mock: bool = False):
         for cfg_path in configs:
             try:
                 builder = ModularBotBuilder.from_config(cfg_path)
+                if strategy:
+                    builder.strategy = strategy
                 bot_apps.append(builder.build())
             except Exception as e:
                 logger.error(f"Failed to load bot config from {cfg_path}: {e}")
@@ -118,6 +130,13 @@ def main():
         "-c",
         type=str,
         help="Explicit path to YAML bot instance config file",
+    )
+    start_parser.add_argument(
+        "--strategy",
+        "-s",
+        choices=["polling", "webhook"],
+        default=None,
+        help="Override bot execution strategy (polling or webhook)",
     )
     start_parser.add_argument(
         "--mock",
@@ -195,9 +214,9 @@ def main():
                 sys.exit(1)
 
         if config_file:
-            asyncio.run(run_bot_instance(config_file, force_mock=force_mock))
+            asyncio.run(run_bot_instance(config_file, force_mock=force_mock, strategy=args.strategy))
         else:
-            asyncio.run(run_all_instances(force_mock=force_mock))
+            asyncio.run(run_all_instances(force_mock=force_mock, strategy=args.strategy))
 
 
 if __name__ == "__main__":
