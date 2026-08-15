@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, Router, F, BaseMiddleware
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
+from platform_core.fsm_storage import get_fsm_storage
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -408,7 +408,7 @@ async def run_admin_bot(bot_token: Optional[str] = None):
     logger.info("👑 Starting Admin Telegram Bot...")
 
     bot = Bot(token=token)
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=get_fsm_storage(key_prefix="fsm:admin_bot"))
     dp.include_router(admin_router)
 
     await dp.start_polling(bot)

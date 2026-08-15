@@ -15,13 +15,7 @@ from platform_core.modules.monetization import MonetizationModule
 from platform_core.modules.presets_module import PresetsModule
 from platform_core.presets import preset_manager, PromptPreset
 
-from aiogram.fsm.storage.memory import MemoryStorage
-try:
-    from aiogram.fsm.storage.redis import RedisStorage
-    import redis.asyncio as aioredis
-except ImportError:
-    RedisStorage = None
-    aioredis = None
+from platform_core.fsm_storage import get_fsm_storage, BaseStorage
 
 logger = logging.getLogger(__name__)
 
@@ -235,19 +229,14 @@ class ModularBotBuilder:
 
         return builder
 
-    def build(self) -> ModularBot:
+    def build(self, storage: Optional[BaseStorage] = None) -> ModularBot:
         """Assembles the ModularBot instance."""
         token = self.token
         if not token or ":" not in token:
             token = settings.IMAGE_BOT_TOKEN
 
-        storage = MemoryStorage()
-        if settings.REDIS_URL and RedisStorage and aioredis:
-            try:
-                redis_client = aioredis.from_url(settings.REDIS_URL)
-                storage = RedisStorage(redis=redis_client)
-            except Exception as e:
-                logger.warning(f"Could not initialize RedisStorage ({e}), falling back to MemoryStorage.")
+        if storage is None:
+            storage = get_fsm_storage(key_prefix=f"fsm:{self.bot_id}")
 
         bot = Bot(token=token)
         dp = Dispatcher(storage=storage)

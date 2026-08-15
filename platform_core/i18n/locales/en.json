@@ -27,5 +27,9 @@
   "models_menu_title": "⚙️ **Select AI Generation Model**\n\n🎯 **Current Model**: `{current_model}`\n\nChoose your preferred AI image generator model:",
   "model_changed": "✅ Model switched to {model}!",
   "btn_models": "⚙️ AI Models",
-  "btn_change_model": "⚙️ Change AI Model"
+  "btn_change_model": "⚙️ Change AI Model",
+  "preset_selected_send_photo": "🎨 **Preset Selected: {preset_title}**\n\n📸 Please upload your portrait photo now to transform it with this style!\n\n_Or send a text prompt to generate without a photo._",
+  "cancel_action_button": "❌ Cancel Selection",
+  "action_cancelled": "❌ Selection cancelled. Choose a style preset or upload a photo to start!",
+  "custom_prompt_with_photo": "✏️ **Custom Style for Photo**\n\nSend a description of how you want to transform your uploaded photo:"
 }

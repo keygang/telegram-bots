@@ -5,7 +5,11 @@ from platform_core.payments.packages import StarPackage
 from platform_core.i18n import i18n, SUPPORTED_LANGUAGES
 
 
-def get_presets_keyboard(presets: List[PromptPreset], _: Optional[Callable[[str], str]] = None) -> InlineKeyboardMarkup:
+def get_presets_keyboard(
+    presets: List[PromptPreset],
+    has_photo: bool = False,
+    _: Optional[Callable[[str], str]] = None,
+) -> InlineKeyboardMarkup:
     """Renders inline keyboard buttons for prompt presets with i18n support."""
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
@@ -18,9 +22,40 @@ def get_presets_keyboard(presets: List[PromptPreset], _: Optional[Callable[[str]
                 callback_data=f"preset:{preset.id}"
             )
         ])
+    custom_label = _("custom_prompt_with_photo") if has_photo else _("preset_custom_button")
     buttons.append([InlineKeyboardButton(text=_("preset_custom_button"), callback_data="preset:custom")])
-    buttons.append([InlineKeyboardButton(text=_("buy_credits_button"), callback_data="open_buy")])
-    buttons.append([InlineKeyboardButton(text=_("btn_settings"), callback_data="settings_menu")])
+    if has_photo:
+        buttons.append([InlineKeyboardButton(text=_("cancel_action_button"), callback_data="cancel_action")])
+    else:
+        buttons.append([InlineKeyboardButton(text=_("buy_credits_button"), callback_data="open_buy")])
+        buttons.append([InlineKeyboardButton(text=_("btn_settings"), callback_data="settings_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_waiting_for_photo_keyboard(
+    preset_id: str,
+    _: Optional[Callable[[str], str]] = None,
+) -> InlineKeyboardMarkup:
+    """Renders keyboard when waiting for user to upload their photo for a selected preset."""
+    if _ is None:
+        _ = lambda k, **kw: i18n.get(k, **kw)
+
+    buttons = [
+        [InlineKeyboardButton(text=_("preset_custom_button"), callback_data="preset:custom")],
+        [InlineKeyboardButton(text=_("back_to_presets"), callback_data="presets_menu")],
+        [InlineKeyboardButton(text=_("cancel_action_button"), callback_data="cancel_action")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_cancel_keyboard(_: Optional[Callable[[str], str]] = None) -> InlineKeyboardMarkup:
+    """Renders simple cancellation keyboard."""
+    if _ is None:
+        _ = lambda k, **kw: i18n.get(k, **kw)
+
+    buttons = [
+        [InlineKeyboardButton(text=_("cancel_action_button"), callback_data="cancel_action")]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

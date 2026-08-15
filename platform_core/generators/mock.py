@@ -46,5 +46,10 @@ class MockMediaGenerator(BaseMediaGenerator):
             media_bytes=image_bytes,
             media_urls=[],
             duration_ms=duration_ms,
-            metadata={"provider": "mock", "type": "image", "prompt": request.prompt}
+            metadata={
+                "provider": "mock",
+                "type": "image",
+                "prompt": request.prompt,
+                "has_reference_photo": bool(request.reference_photo_bytes),
+            }
         )

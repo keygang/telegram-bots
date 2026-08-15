@@ -10,6 +10,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from platform_core.bot.keyboards import (
     get_presets_keyboard,
+    get_waiting_for_photo_keyboard,
+    get_cancel_keyboard,
     get_models_keyboard,
     get_star_packages_keyboard,
     get_main_action_keyboard,
@@ -383,6 +385,46 @@ async def handle_set_model(
 
 # --- GENERATION & PROMPT HANDLERS ---
 
+@core_router.callback_query(F.data == "cancel_action")
+@core_router.message(Command("cancel"))
+async def handle_cancel_action(
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    bot_id: str = "default_bot",
+    _: Optional[Callable[..., str]] = None
+):
+    """Cancels current selection or active generation state."""
+    if _ is None:
+        _ = lambda k, **kw: i18n.get(k, **kw)
+
+    await state.clear()
+    text = _("action_cancelled")
+    presets = await preset_manager.get_presets("image", bot_id=bot_id)
+    kb = get_presets_keyboard(presets, has_photo=False, _=_)
+
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+
+async def _resolve_reference_photo(bot: Bot, state_data: dict) -> Optional[bytes]:
+    """
+    Resolves photo bytes from FSM state data.
+    Supports lightweight reference_file_id (downloaded on demand) and legacy reference_photo_bytes.
+    """
+    ref_bytes = state_data.get("reference_photo_bytes")
+    if ref_bytes:
+        return ref_bytes
+    ref_file_id = state_data.get("reference_file_id")
+    if ref_file_id:
+        file_info = await bot.get_file(ref_file_id)
+        photo_bytes_io = await bot.download_file(file_info.file_path)
+        return photo_bytes_io.read()
+    return None
+
+
 @core_router.callback_query(F.data.startswith("preset:"))
 async def handle_preset_selection(
     callback: CallbackQuery,
@@ -391,17 +433,27 @@ async def handle_preset_selection(
     bot_id: str = "default_bot",
     _: Optional[Callable[..., str]] = None
 ):
+    """
+    Handles style preset selection.
+    If reference photo is already uploaded, immediately generates with photo.
+    If no photo is uploaded yet, transitions to waiting_for_photo state so user can upload photo.
+    """
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
     preset_id = callback.data.split("preset:")[1]
     user_id = callback.from_user.id
 
+    state_data = await state.get_data()
+    has_photo = bool(state_data.get("reference_file_id") or state_data.get("reference_photo_bytes"))
+
     if preset_id == "custom":
         await state.set_state(GenerationStates.entering_custom_prompt)
         await callback.answer()
+        prompt_text = _("custom_prompt_with_photo") if has_photo else _("enter_custom_prompt")
         await callback.message.answer(
-            _("enter_custom_prompt"),
+            prompt_text,
+            reply_markup=get_cancel_keyboard(_=_),
             parse_mode="Markdown"
         )
         return
@@ -411,24 +463,37 @@ async def handle_preset_selection(
         await callback.answer("Preset not found.", show_alert=True)
         return
 
+    # Flow A: Photo was already uploaded -> Generate immediately with photo
+    if has_photo:
+        await callback.answer(f"Selected: {preset.title}")
+        ref_photo_bytes = await _resolve_reference_photo(bot, state_data)
+        await state.clear()
+        prompt = preset.build_prompt()
+        await run_generation_job(
+            bot=bot,
+            chat_id=callback.message.chat.id,
+            user_id=user_id,
+            prompt=prompt,
+            preset_id=preset.id,
+            reference_photo_bytes=ref_photo_bytes,
+            media_type=preset.media_type,
+            model_name=preset.default_model,
+            bot_id=bot_id,
+            _=_
+        )
+        return
+
+    # Flow B: No photo yet -> Store chosen preset and request photo upload from user
+    await state.update_data(selected_preset_id=preset.id)
+    await state.set_state(GenerationStates.waiting_for_photo)
     await callback.answer(f"Selected: {preset.title}")
 
-    # Check if state has uploaded reference photo
-    state_data = await state.get_data()
-    ref_photo_bytes = state_data.get("reference_photo_bytes")
-
-    prompt = preset.build_prompt()
-    await run_generation_job(
-        bot=bot,
-        chat_id=callback.message.chat.id,
-        user_id=user_id,
-        prompt=prompt,
-        preset_id=preset.id,
-        reference_photo_bytes=ref_photo_bytes,
-        media_type=preset.media_type,
-        model_name=preset.default_model,
-        bot_id=bot_id,
-        _=_
+    waiting_text = _("preset_selected_send_photo", preset_title=preset.title)
+    kb = get_waiting_for_photo_keyboard(preset.id, _=_)
+    await callback.message.answer(
+        waiting_text,
+        reply_markup=kb,
+        parse_mode="Markdown"
     )
 
 
@@ -440,20 +505,69 @@ async def handle_photo_upload(
     bot_id: str = "default_bot",
     _: Optional[Callable[..., str]] = None
 ):
-    """Handles photo upload for photo-to-photo face avatar generation."""
+    """
+    Handles user photo upload.
+    If user already selected a preset (waiting_for_photo), immediately triggers generation.
+    If photo has a text caption, uses caption as prompt directly with photo.
+    Otherwise, saves photo reference_file_id in state and prompts user to pick a style preset.
+    """
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
     photo = message.photo[-1]  # Highest resolution
-    file_info = await bot.get_file(photo.file_id)
-    photo_bytes_io = await bot.download_file(file_info.file_path)
-    photo_bytes = photo_bytes_io.read()
+    state_data = await state.get_data()
+    selected_preset_id = state_data.get("selected_preset_id")
 
-    await state.update_data(reference_photo_bytes=photo_bytes)
+    # Flow B continuation: Preset was chosen first, now photo is uploaded
+    if selected_preset_id:
+        file_info = await bot.get_file(photo.file_id)
+        photo_bytes_io = await bot.download_file(file_info.file_path)
+        photo_bytes = photo_bytes_io.read()
+
+        preset = await preset_manager.get_preset_by_id(selected_preset_id)
+        if preset:
+            await state.clear()
+            prompt = preset.build_prompt()
+            await run_generation_job(
+                bot=bot,
+                chat_id=message.chat.id,
+                user_id=message.from_user.id,
+                prompt=prompt,
+                preset_id=preset.id,
+                reference_photo_bytes=photo_bytes,
+                media_type=preset.media_type,
+                model_name=preset.default_model,
+                bot_id=bot_id,
+                _=_
+            )
+            return
+
+    # Direct photo upload with caption prompt
+    if message.caption and message.caption.strip():
+        file_info = await bot.get_file(photo.file_id)
+        photo_bytes_io = await bot.download_file(file_info.file_path)
+        photo_bytes = photo_bytes_io.read()
+
+        caption_prompt = message.caption.strip()
+        await state.clear()
+        await run_generation_job(
+            bot=bot,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id,
+            prompt=caption_prompt,
+            reference_photo_bytes=photo_bytes,
+            media_type="image",
+            bot_id=bot_id,
+            _=_
+        )
+        return
+
+    # Flow A start: Photo uploaded first -> Store lightweight file_id and prompt to choose a preset
+    await state.update_data(reference_file_id=photo.file_id, selected_preset_id=None)
     await state.set_state(GenerationStates.selecting_preset)
 
     presets = await preset_manager.get_presets("image", bot_id=bot_id)
-    kb = get_presets_keyboard(presets, _=_)
+    kb = get_presets_keyboard(presets, has_photo=True, _=_)
     await message.answer(
         _("photo_received"),
         reply_markup=kb,
@@ -470,7 +584,11 @@ async def handle_custom_text_prompt(
     user_profile: Optional[UserProfile] = None,
     _: Optional[Callable[..., str]] = None
 ):
-    """Handles custom prompt text messages."""
+    """
+    Handles custom prompt text messages.
+    If photo was stored in state, generates with photo + custom prompt text.
+    If no photo is in state (pure text prompt), generates pure text-to-image without photo.
+    """
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
@@ -478,9 +596,10 @@ async def handle_custom_text_prompt(
     user_id = message.from_user.id
 
     state_data = await state.get_data()
-    ref_photo_bytes = state_data.get("reference_photo_bytes")
+    ref_photo_bytes = await _resolve_reference_photo(bot, state_data)
     model_name = (user_profile and user_profile.selected_model) or "google/gemini-2.5-flash-image"
 
+    await state.clear()
     await run_generation_job(
         bot=bot,
         chat_id=message.chat.id,
@@ -492,4 +611,3 @@ async def handle_custom_text_prompt(
         bot_id=bot_id,
         _=_
     )
-    await state.clear()

@@ -50,6 +50,9 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             if target_model.lower().startswith("openrouter/") and openrouter_api_key:
                 gen_kwargs["api_key"] = openrouter_api_key
 
+            if request.reference_photo_bytes:
+                gen_kwargs["image"] = request.reference_photo_bytes
+
             if request.extra_params:
                 gen_kwargs.update(request.extra_params)
 
@@ -84,9 +87,24 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
 
         # 2. Fallback to acompletion for multimodal/chat-based image models (e.g. OpenRouter Gemini)
         try:
+            if request.reference_photo_bytes:
+                ref_b64 = base64.b64encode(request.reference_photo_bytes).decode("utf-8")
+                user_content: Any = [
+                    {
+                        "type": "text",
+                        "text": f"Transform the person/subject in the provided reference photo according to this description: {request.prompt}",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{ref_b64}"},
+                    },
+                ]
+            else:
+                user_content = f"Generate an image based on this description: {request.prompt}"
+
             comp_kwargs: Dict[str, Any] = {
                 "model": target_model,
-                "messages": [{"role": "user", "content": f"Generate an image based on this description: {request.prompt}"}],
+                "messages": [{"role": "user", "content": user_content}],
             }
             if target_model.lower().startswith("openrouter/") and openrouter_api_key:
                 comp_kwargs["api_key"] = openrouter_api_key

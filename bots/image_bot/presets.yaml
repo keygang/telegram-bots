@@ -5,8 +5,8 @@ presets:
     icon: "🌆"
     category: "scifi"
     media_type: "image"
-    prompt_template: "Cyberpunk character portrait of {user_prompt}, vibrant cyan and magenta neon lights, ultra-detailed 8k render"
-    negative_prompt: "blurry, low quality, dark"
+    prompt_template: "Cyberpunk character portrait of {user_prompt}, vibrant cyan and magenta neon lights, futuristic cybernetic details, rainy Neo-Tokyo background, ultra-detailed 8k render"
+    negative_prompt: "blurry, low quality, dark, distorted face"
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
@@ -16,18 +16,51 @@ presets:
     icon: "🖼️"
     category: "artistic"
     media_type: "image"
-    prompt_template: "Masterpiece oil painting depicting {user_prompt}, rich textures, dramatic chiaroscuro lighting, Renaissance style"
-    negative_prompt: "digital photo, 3d render, modern, low quality"
+    prompt_template: "Masterpiece oil painting portrait depicting {user_prompt}, rich textures, dramatic chiaroscuro lighting, Renaissance style, fine art canvas"
+    negative_prompt: "digital photo, 3d render, modern, low quality, cartoon"
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
   - id: "cinematic_anime"
-    title: "Ghibli Cinematic Anime"
+    title: "Studio Ghibli Anime"
     description: "Lush Studio Ghibli style watercolor anime aesthetic"
     icon: "✨"
     category: "anime"
     media_type: "image"
-    prompt_template: "Studio Ghibli style watercolor illustration of {user_prompt}, whimsical atmosphere, lush anime aesthetic, Miyazaki art style"
+    prompt_template: "Studio Ghibli style watercolor illustration portrait of {user_prompt}, whimsical atmosphere, lush anime aesthetic, Miyazaki art style"
     negative_prompt: "realistic, photograph, 3d, dark, gritty"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "vintage_polaroid_90s"
+    title: "90s Vintage Polaroid"
+    description: "Nostalgic 1990s analog film flash photograph"
+    icon: "📷"
+    category: "vintage"
+    media_type: "image"
+    prompt_template: "Authentic 1990s vintage Polaroid flash photo of {user_prompt}, film grain, soft warm nostalgic lighting, analog film aesthetic"
+    negative_prompt: "digital render, cgi, modern 3d, overly sharp"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "studio_headshot"
+    title: "Professional Studio Headshot"
+    description: "Clean high-end corporate & editorial studio lighting portrait"
+    icon: "👔"
+    category: "photography"
+    media_type: "image"
+    prompt_template: "High-end corporate editorial studio headshot of {user_prompt}, softbox studio lighting, sharp focus, 85mm f/1.4 lens bokeh, professional attire"
+    negative_prompt: "casual, blurry, oversaturated, amateur, noisy"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "royal_renaissance"
+    title: "Royal Renaissance Royalty"
+    description: "Opulent royal monarch portrait in velvet and gold jewelry"
+    icon: "👑"
+    category: "historical"
+    media_type: "image"
+    prompt_template: "Grand royal portrait of {user_prompt} as an opulent Renaissance monarch, wearing ornate embroidered velvet robes and gold jewelry, majestic palace hall background"
+    negative_prompt: "modern, casual, low quality, deformed"
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
