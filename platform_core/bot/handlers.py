@@ -247,8 +247,6 @@ async def handle_start_command(
 
 
 @core_router.message(Command("generate"))
-@core_router.message(Command("create"))
-@core_router.message(Command("presets"))
 @core_router.callback_query(F.data == "generate_menu")
 @core_router.callback_query(F.data == "presets_menu")
 @core_router.callback_query(F.data == "main_menu")
@@ -285,8 +283,6 @@ async def handle_reload_presets_command(
 
 
 @core_router.message(Command("buy"))
-@core_router.message(Command("stars"))
-@core_router.message(Command("balance"))
 @core_router.callback_query(F.data == "open_buy")
 async def handle_buy_menu(
     event: Message | CallbackQuery,
@@ -312,7 +308,6 @@ async def handle_buy_menu(
 
 
 @core_router.message(Command("help"))
-@core_router.message(Command("info"))
 @core_router.callback_query(F.data == "help_menu")
 async def handle_help_command(
     event: Message | CallbackQuery,

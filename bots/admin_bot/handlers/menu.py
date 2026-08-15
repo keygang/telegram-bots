@@ -8,7 +8,7 @@ from bots.admin_bot.keyboards import build_main_admin_keyboard
 menu_router = Router(name="admin_menu_router")
 
 
-@menu_router.message(Command("start", "admin", "menu"))
+@menu_router.message(Command("start", "admin"))
 async def cmd_admin_menu(message: Message, state: FSMContext):
     """Renders the main Admin Control Dashboard."""
     await state.clear()

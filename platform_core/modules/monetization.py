@@ -41,7 +41,6 @@ class MonetizationModule(BaseBotModule):
     def get_bot_commands(self) -> list[BotCommand]:
         return [
             BotCommand(command="buy", description="⭐️ Buy Credits with Telegram Stars"),
-            BotCommand(command="balance", description="💳 Check your Credit Balance"),
         ]
 
     def get_module_info(self) -> ModuleInfo:

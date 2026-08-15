@@ -81,7 +81,7 @@ async def test_handle_help_command_i18n_ru():
         message.answer.assert_called_once()
         args, _kwargs = message.answer.call_args
         assert "Справка" in args[0]
-        assert "/presets" in args[0]
+        assert "/generate" in args[0]
 
 
 def test_get_help_keyboard_structure():

@@ -21,7 +21,7 @@ from platform_core.db import db
 analytics_router = Router(name="admin_analytics_router")
 
 
-@analytics_router.message(Command("stats", "analytics"))
+@analytics_router.message(Command("stats"))
 async def cmd_admin_stats(message: Message):
     """Displays platform metrics and telemetry summary for admins."""
     text = await render_analytics_overview_text()

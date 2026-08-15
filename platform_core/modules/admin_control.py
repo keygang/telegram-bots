@@ -25,7 +25,6 @@ class AdminControlModule(BaseBotModule):
     def get_bot_commands(self) -> list[BotCommand]:
         return [
             BotCommand(command="admin", description="👑 Open Admin Dashboard"),
-            BotCommand(command="menu", description="👑 Open Admin Dashboard"),
             BotCommand(command="stats", description="📊 View Platform Telemetry & Metrics"),
         ]
 
