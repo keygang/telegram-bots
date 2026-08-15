@@ -1,6 +1,7 @@
 import logging
-from typing import Any, Dict, List, Optional
-from platform_core.db import db
+from typing import Any
+
+from platform_core.db.supabase_client import db
 from platform_core.presets.base import PromptPreset
 
 logger = logging.getLogger(__name__)
@@ -14,9 +15,9 @@ class SupabaseNoSQLManager:
     """
 
     def __init__(self):
-        self._in_memory_presets: Dict[str, PromptPreset] = {}
+        self._in_memory_presets: dict[str, PromptPreset] = {}
 
-    def _parse_preset_from_row(self, row: Dict[str, Any]) -> PromptPreset:
+    def _parse_preset_from_row(self, row: dict[str, Any]) -> PromptPreset:
         """Parses a Supabase row (with JSONB data column) into a PromptPreset object."""
         data_doc = row.get("data") or {}
         if isinstance(data_doc, dict):
@@ -29,12 +30,12 @@ class SupabaseNoSQLManager:
 
     async def get_presets(
         self,
-        bot_id: Optional[str] = None,
-        media_type: Optional[str] = None,
+        bot_id: str | None = None,
+        media_type: str | None = None,
         include_inactive: bool = False,
-    ) -> List[PromptPreset]:
+    ) -> list[PromptPreset]:
         """Retrieves presets from Supabase NoSQL store or in-memory fallback."""
-        presets: List[PromptPreset] = []
+        presets: list[PromptPreset] = []
 
         if db.client:
             try:
@@ -49,7 +50,9 @@ class SupabaseNoSQLManager:
                         presets.append(preset)
                     logger.info(f"Retrieved {len(presets)} presets from Supabase NoSQL store.")
             except Exception as e:
-                logger.warning(f"Failed to fetch presets from Supabase NoSQL store ({e}). Using in-memory store.")
+                logger.warning(
+                    f"Failed to fetch presets from Supabase NoSQL store ({e}). Using in-memory store."
+                )
 
         if not presets and self._in_memory_presets:
             presets = list(self._in_memory_presets.values())
@@ -69,7 +72,7 @@ class SupabaseNoSQLManager:
 
         return presets
 
-    async def get_preset_by_id(self, preset_id: str) -> Optional[PromptPreset]:
+    async def get_preset_by_id(self, preset_id: str) -> PromptPreset | None:
         """Fetches a single preset by ID."""
         if db.client:
             try:
@@ -105,11 +108,13 @@ class SupabaseNoSQLManager:
                 db.client.table("preset_prompts").upsert(row_data).execute()
                 logger.info(f"Saved preset '{preset.id}' into Supabase NoSQL store.")
             except Exception as e:
-                logger.warning(f"Could not sync preset '{preset.id}' to Supabase ({e}). Saved to in-memory store.")
+                logger.warning(
+                    f"Could not sync preset '{preset.id}' to Supabase ({e}). Saved to in-memory store."
+                )
 
         return preset
 
-    async def update_preset(self, preset_id: str, updates: Dict[str, Any]) -> Optional[PromptPreset]:
+    async def update_preset(self, preset_id: str, updates: dict[str, Any]) -> PromptPreset | None:
         """Updates specific fields of an existing preset document."""
         existing = await self.get_preset_by_id(preset_id)
         if not existing:
@@ -120,7 +125,7 @@ class SupabaseNoSQLManager:
         updated_preset = PromptPreset(**current_dict)
         return await self.save_preset(updated_preset)
 
-    async def toggle_preset_active(self, preset_id: str, is_active: bool) -> Optional[PromptPreset]:
+    async def toggle_preset_active(self, preset_id: str, is_active: bool) -> PromptPreset | None:
         """Toggles the is_active status of a preset."""
         return await self.update_preset(preset_id, {"is_active": is_active})
 
@@ -137,11 +142,13 @@ class SupabaseNoSQLManager:
                 logger.info(f"Deleted preset '{preset_id}' from Supabase NoSQL store.")
                 return True
             except Exception as e:
-                logger.warning(f"Could not delete preset '{preset_id}' from Supabase ({e}). Deleted from in-memory store.")
+                logger.warning(
+                    f"Could not delete preset '{preset_id}' from Supabase ({e}). Deleted from in-memory store."
+                )
 
         return deleted_in_memory or True
 
-    async def seed_default_presets(self, default_presets: List[PromptPreset]) -> int:
+    async def seed_default_presets(self, default_presets: list[PromptPreset]) -> int:
         """Seeds built-in default presets into Supabase NoSQL store if empty."""
         existing = await self.get_presets(include_inactive=True)
         count = 0

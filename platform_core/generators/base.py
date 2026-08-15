@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-DEFAULT_AVAILABLE_MODELS: List[str] = [
+DEFAULT_AVAILABLE_MODELS: list[str] = [
     "google/gemini-2.5-flash-image",
     "black-forest-labs/flux-1.1-pro",
     "openai/dall-e-3",
@@ -13,25 +14,27 @@ DEFAULT_AVAILABLE_MODELS: List[str] = [
 
 class GenerationRequest(BaseModel):
     """Encapsulates all parameters for an image or video generation job."""
+
     prompt: str
-    negative_prompt: Optional[str] = None
+    negative_prompt: str | None = None
     model_name: str = "google/gemini-2.5-flash-image"
-    reference_photo_bytes: Optional[bytes] = None
-    reference_photo_url: Optional[str] = None
+    reference_photo_bytes: bytes | None = None
+    reference_photo_url: str | None = None
     media_type: str = "image"  # "image" or "video"
     width: int = 1024
     height: int = 1024
-    extra_params: Dict[str, Any] = Field(default_factory=dict)
+    extra_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class GenerationResponse(BaseModel):
     """Standardized response from any media generation provider."""
+
     status: str = "success"  # "success" or "failed"
-    media_urls: List[str] = Field(default_factory=list)
-    media_bytes: Optional[bytes] = None
+    media_urls: list[str] = Field(default_factory=list)
+    media_bytes: bytes | None = None
     duration_ms: int = 0
-    error_message: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseMediaGenerator(ABC):

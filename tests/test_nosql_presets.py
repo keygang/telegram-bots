@@ -1,6 +1,7 @@
 import pytest
-from platform_core.presets import PromptPreset, preset_manager
+
 from platform_core.db.nosql import nosql_manager
+from platform_core.presets import PromptPreset, preset_manager
 
 
 @pytest.mark.asyncio
@@ -33,7 +34,9 @@ async def test_nosql_preset_crud():
     assert bot1_presets[0].id == "test_nosql_1"  # Promoted to top for image_bot_1
 
     bot2_presets = await nosql_manager.get_presets(bot_id="image_bot_2")
-    assert any(p.id == "test_nosql_1" for p in bot2_presets)  # Common preset accessible to image_bot_2
+    assert any(
+        p.id == "test_nosql_1" for p in bot2_presets
+    )  # Common preset accessible to image_bot_2
 
     # 4. Toggle active status
     updated = await nosql_manager.toggle_preset_active("test_nosql_1", is_active=False)

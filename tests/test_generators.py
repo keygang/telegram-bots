@@ -1,7 +1,14 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from platform_core.generators import GeneratorFactory, GenerationRequest, MockMediaGenerator, UnifiedMediaGenerator
+
 from platform_core.config import settings
+from platform_core.generators import (
+    GenerationRequest,
+    GeneratorFactory,
+    MockMediaGenerator,
+    UnifiedMediaGenerator,
+)
 
 
 @pytest.mark.asyncio
@@ -9,10 +16,7 @@ async def test_mock_generator_image():
     generator = GeneratorFactory.get_generator(force_mock=True)
     assert isinstance(generator, MockMediaGenerator)
 
-    req = GenerationRequest(
-        prompt="Cyberpunk warrior in neon city",
-        media_type="image"
-    )
+    req = GenerationRequest(prompt="Cyberpunk warrior in neon city", media_type="image")
     res = await generator.generate(req)
 
     assert res.status == "success"
@@ -36,8 +40,10 @@ async def test_unified_generator_openrouter():
     mock_response = MagicMock()
     mock_response.data = [mock_item]
 
-    with patch("litellm.aimage_generation", new_callable=AsyncMock) as mock_aimage_gen, \
-         patch.object(settings, "OPENROUTER_API_KEY", "test_key"):
+    with (
+        patch("litellm.aimage_generation", new_callable=AsyncMock) as mock_aimage_gen,
+        patch.object(settings, "OPENROUTER_API_KEY", "test_key"),
+    ):
         mock_aimage_gen.return_value = mock_response
 
         req = GenerationRequest(
@@ -58,7 +64,7 @@ async def test_unified_generator_openrouter():
             prompt="A majestic lion on a cliff",
             n=1,
             size="1024x1024",
-            api_key="test_key"
+            api_key="test_key",
         )
 
 
@@ -71,8 +77,10 @@ async def test_unified_generator_auto_prefixes_openrouter():
     mock_response = MagicMock()
     mock_response.data = [mock_item]
 
-    with patch("litellm.aimage_generation", new_callable=AsyncMock) as mock_aimage_gen, \
-         patch.object(settings, "OPENROUTER_API_KEY", "test_key"):
+    with (
+        patch("litellm.aimage_generation", new_callable=AsyncMock) as mock_aimage_gen,
+        patch.object(settings, "OPENROUTER_API_KEY", "test_key"),
+    ):
         mock_aimage_gen.return_value = mock_response
 
         req = GenerationRequest(
@@ -88,7 +96,7 @@ async def test_unified_generator_auto_prefixes_openrouter():
             prompt="Futuristic car",
             n=1,
             size="1024x1024",
-            api_key="test_key"
+            api_key="test_key",
         )
 
 
@@ -97,16 +105,23 @@ async def test_unified_generator_chat_completion_fallback():
     unified_gen = UnifiedMediaGenerator()
 
     mock_msg = MagicMock()
-    mock_msg.images = [{"image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}}]
+    mock_msg.images = [
+        {
+            "image_url": {
+                "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            }
+        }
+    ]
     mock_msg.content = "Here is your generated image"
     mock_choice = MagicMock()
     mock_choice.message = mock_msg
     mock_response = MagicMock()
     mock_response.choices = [mock_choice]
 
-    with patch("litellm.aimage_generation", side_effect=RuntimeError("Endpoint not supported")), \
-         patch("litellm.acompletion", return_value=mock_response) as mock_acompletion:
-
+    with (
+        patch("litellm.aimage_generation", side_effect=RuntimeError("Endpoint not supported")),
+        patch("litellm.acompletion", return_value=mock_response) as mock_acompletion,
+    ):
         req = GenerationRequest(
             prompt="Heroic Greek warrior",
             model_name="google/gemini-2.5-flash-image",
@@ -117,6 +132,3 @@ async def test_unified_generator_chat_completion_fallback():
         assert res.media_bytes is not None
         assert res.metadata["model"] == "openrouter/google/gemini-2.5-flash-image"
         mock_acompletion.assert_called_once()
-
-
-

@@ -1,5 +1,6 @@
 import pytest
-from platform_core.db import db, BotEvent, GenerationLog
+
+from platform_core.db import db
 
 
 @pytest.mark.asyncio
@@ -32,7 +33,7 @@ async def test_star_payment_credits():
         bot_id="image_bot",
         stars_paid=25,
         credits_to_add=10,
-        telegram_charge_id="ch_test_123"
+        telegram_charge_id="ch_test_123",
     )
 
     assert new_bal.credits_remaining == initial_credits + 10

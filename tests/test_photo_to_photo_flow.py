@@ -1,19 +1,19 @@
 import io
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage, StorageKey
-from aiogram.types import Message, CallbackQuery, User, Chat, PhotoSize, File
+from aiogram.types import CallbackQuery, Chat, File, Message, PhotoSize, User
 
 from platform_core.bot.handlers import (
+    handle_cancel_action,
+    handle_custom_text_prompt,
     handle_photo_upload,
     handle_preset_selection,
-    handle_custom_text_prompt,
-    handle_cancel_action,
     handle_presets_menu,
 )
 from platform_core.bot.states import GenerationStates
-from platform_core.presets import PromptPreset, preset_manager
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def mock_bot():
     bot.token = "123456:MOCK_TOKEN"
     file_obj = File(file_id="photo_123", file_unique_id="uniq_123", file_path="photos/sample.jpg")
     bot.get_file = AsyncMock(return_value=file_obj)
-    
+
     photo_stream = io.BytesIO(b"FAKE_PHOTO_BYTES_DATA_12345")
     bot.download_file = AsyncMock(return_value=photo_stream)
     bot.send_message = AsyncMock(return_value=MagicMock(message_id=999))
@@ -50,7 +50,7 @@ async def test_flow_a_photo_first_then_preset(mock_bot, memory_fsm_context):
         PhotoSize(file_id="thumb_1", file_unique_id="u1", width=100, height=100),
         PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800),
     ]
-    
+
     photo_msg = MagicMock(spec=Message)
     photo_msg.message_id = 10
     photo_msg.chat = chat
@@ -83,7 +83,9 @@ async def test_flow_a_photo_first_then_preset(mock_bot, memory_fsm_context):
     callback.message = cb_msg
     callback.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_preset_selection(
             callback=callback,
             state=memory_fsm_context,
@@ -137,9 +139,7 @@ async def test_flow_b_preset_first_then_photo(mock_bot, memory_fsm_context):
     assert cb_msg.answer.called
 
     # 2. User uploads photo
-    photo_sizes = [
-        PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)
-    ]
+    photo_sizes = [PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)]
     photo_msg = MagicMock(spec=Message)
     photo_msg.message_id = 12
     photo_msg.chat = chat
@@ -148,7 +148,9 @@ async def test_flow_b_preset_first_then_photo(mock_bot, memory_fsm_context):
     photo_msg.caption = None
     photo_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_photo_upload(
             message=photo_msg,
             state=memory_fsm_context,
@@ -182,7 +184,9 @@ async def test_flow_c_text_to_image_without_photo(mock_bot, memory_fsm_context):
     text_msg.text = "A futuristic flying cyber car over Tokyo skyline"
     text_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_custom_text_prompt(
             message=text_msg,
             state=memory_fsm_context,
@@ -207,9 +211,7 @@ async def test_flow_d_photo_with_caption(mock_bot, memory_fsm_context):
     user = User(id=2001, is_bot=False, first_name="Alice")
     chat = Chat(id=1001, type="private")
 
-    photo_sizes = [
-        PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)
-    ]
+    photo_sizes = [PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)]
     photo_msg = MagicMock(spec=Message)
     photo_msg.message_id = 30
     photo_msg.chat = chat
@@ -218,7 +220,9 @@ async def test_flow_d_photo_with_caption(mock_bot, memory_fsm_context):
     photo_msg.caption = "Turn me into an ancient samurai warrior"
     photo_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_photo_upload(
             message=photo_msg,
             state=memory_fsm_context,
@@ -286,7 +290,9 @@ async def test_legacy_reference_photo_bytes_compatibility(mock_bot, memory_fsm_c
     callback.message = cb_msg
     callback.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_preset_selection(
             callback=callback,
             state=memory_fsm_context,
@@ -318,7 +324,9 @@ async def test_preset_rejects_text_prompt_and_requires_photo(mock_bot, memory_fs
     text_msg.text = "Just create a cyberpunk robot without photo"
     text_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_custom_text_prompt(
             message=text_msg,
             state=memory_fsm_context,
@@ -375,7 +383,9 @@ async def test_custom_prompt_flow_text_only(mock_bot, memory_fsm_context):
     text_msg.text = "Mystical enchanted forest with glowing mushrooms"
     text_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_custom_text_prompt(
             message=text_msg,
             state=memory_fsm_context,
@@ -433,7 +443,9 @@ async def test_custom_prompt_flow_with_photo_upload_then_text(mock_bot, memory_f
     text_msg.text = "Add steampunk goggles and mechanical wings"
     text_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_custom_text_prompt(
             message=text_msg,
             state=memory_fsm_context,
@@ -461,9 +473,7 @@ async def test_custom_prompt_flow_with_captioned_photo_upload(mock_bot, memory_f
     await memory_fsm_context.set_state(GenerationStates.entering_custom_prompt)
 
     # 2. Uploads photo with caption
-    photo_sizes = [
-        PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)
-    ]
+    photo_sizes = [PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)]
     photo_msg = MagicMock(spec=Message)
     photo_msg.message_id = 70
     photo_msg.chat = chat
@@ -472,7 +482,9 @@ async def test_custom_prompt_flow_with_captioned_photo_upload(mock_bot, memory_f
     photo_msg.caption = "Transform into an oil painting"
     photo_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_photo_upload(
             message=photo_msg,
             state=memory_fsm_context,
@@ -519,7 +531,3 @@ async def test_generate_menu_command_and_callback(mock_bot):
     await handle_presets_menu(event=callback, bot_id="image_bot")
     assert callback.answer.called
     assert cb_msg.edit_text.called
-
-
-
-

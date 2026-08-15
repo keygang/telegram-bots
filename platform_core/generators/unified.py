@@ -1,11 +1,12 @@
-import asyncio
 import base64
 import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import litellm
+
 from platform_core.config import settings
 from platform_core.generators.base import BaseMediaGenerator, GenerationRequest, GenerationResponse
 
@@ -40,7 +41,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
 
         # 1. Try standard aimage_generation
         try:
-            gen_kwargs: Dict[str, Any] = {
+            gen_kwargs: dict[str, Any] = {
                 "model": target_model,
                 "prompt": request.prompt,
                 "n": 1,
@@ -58,7 +59,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
 
             response = await litellm.aimage_generation(**gen_kwargs)
 
-            urls: List[str] = []
+            urls: list[str] = []
             if hasattr(response, "data") and response.data:
                 for item in response.data:
                     if hasattr(item, "url") and item.url:
@@ -70,7 +71,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                             status="success",
                             media_bytes=b64_data,
                             duration_ms=duration_ms,
-                            metadata={"provider": "openrouter", "model": target_model}
+                            metadata={"provider": "openrouter", "model": target_model},
                         )
 
             if urls:
@@ -79,11 +80,13 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                     status="success",
                     media_urls=urls,
                     duration_ms=duration_ms,
-                    metadata={"provider": "openrouter", "model": target_model}
+                    metadata={"provider": "openrouter", "model": target_model},
                 )
 
         except Exception as e:
-            logger.info(f"aimage_generation direct call failed for {target_model} ({e}), trying chat completion fallback...")
+            logger.info(
+                f"aimage_generation direct call failed for {target_model} ({e}), trying chat completion fallback..."
+            )
 
         # 2. Fallback to acompletion for multimodal/chat-based image models (e.g. OpenRouter Gemini)
         try:
@@ -102,7 +105,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             else:
                 user_content = f"Generate an image based on this description: {request.prompt}"
 
-            comp_kwargs: Dict[str, Any] = {
+            comp_kwargs: dict[str, Any] = {
                 "model": target_model,
                 "messages": [{"role": "user", "content": user_content}],
             }
@@ -112,7 +115,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             comp = await litellm.acompletion(**comp_kwargs)
             if comp.choices and comp.choices[0].message:
                 msg = comp.choices[0].message
-                
+
                 # Check message.images
                 images = getattr(msg, "images", None) or []
                 if images:
@@ -130,7 +133,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                                     status="success",
                                     media_bytes=base64.b64decode(b64_str),
                                     duration_ms=duration_ms,
-                                    metadata={"provider": "openrouter", "model": target_model}
+                                    metadata={"provider": "openrouter", "model": target_model},
                                 )
                             elif url.startswith("http"):
                                 duration_ms = int((time.time() - start_time) * 1000)
@@ -138,7 +141,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                                     status="success",
                                     media_urls=[url],
                                     duration_ms=duration_ms,
-                                    metadata={"provider": "openrouter", "model": target_model}
+                                    metadata={"provider": "openrouter", "model": target_model},
                                 )
 
                 # Check message.content for base64 or HTTP URL
@@ -150,7 +153,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                         status="success",
                         media_bytes=base64.b64decode(match.group(1)),
                         duration_ms=duration_ms,
-                        metadata={"provider": "openrouter", "model": target_model}
+                        metadata={"provider": "openrouter", "model": target_model},
                     )
 
                 url_match = re.search(r"https?://[^\s\"\')]+\.(?:png|jpg|jpeg|webp)", content)
@@ -160,7 +163,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                         status="success",
                         media_urls=[url_match.group(0)],
                         duration_ms=duration_ms,
-                        metadata={"provider": "openrouter", "model": target_model}
+                        metadata={"provider": "openrouter", "model": target_model},
                     )
 
         except Exception as e:
@@ -183,4 +186,3 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             duration_ms=duration_ms,
             metadata={"provider": "openrouter", "model": target_model},
         )
-

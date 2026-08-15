@@ -21,10 +21,6 @@ modules:
     enabled: true
     options:
       default_model: "google/gemini-2.5-flash-image"
-  - name: "presets"
-    enabled: true
-    options:
-      file: "../bots/image_bot/presets.yaml"
 
 presets:
   - id: "cyberpunk_city"

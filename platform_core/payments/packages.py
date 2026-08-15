@@ -1,4 +1,3 @@
-from typing import List, Optional
 from pydantic import BaseModel
 
 
@@ -6,6 +5,7 @@ class StarPackage(BaseModel):
     """
     Schema for a Telegram Stars top-up package.
     """
+
     id: str
     title: str
     description: str
@@ -14,7 +14,7 @@ class StarPackage(BaseModel):
     icon: str = "🌟"
 
 
-STAR_PACKAGES: List[StarPackage] = [
+STAR_PACKAGES: list[StarPackage] = [
     StarPackage(
         id="stars_10",
         title="Starter Package",
@@ -42,7 +42,7 @@ STAR_PACKAGES: List[StarPackage] = [
 ]
 
 
-def get_package_by_id(package_id: str) -> Optional[StarPackage]:
+def get_package_by_id(package_id: str) -> StarPackage | None:
     for pkg in STAR_PACKAGES:
         if pkg.id == package_id:
             return pkg

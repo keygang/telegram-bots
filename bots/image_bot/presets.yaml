@@ -1,4 +1,24 @@
 presets:
+  - id: "odyssey"
+    title: "Homer's Odyssey Warrior"
+    description: "Transform into an epic ancient Greek hero from Homer's Odyssey"
+    icon: "🏛️"
+    category: "Popular Legends"
+    media_type: "image"
+    prompt_template: "Heroic portrait of {user_prompt} as an ancient Greek epic warrior from Homer's Odyssey, cinematic lighting, gold-trimmed mythic armor, dramatic Mount Olympus background, 8k resolution"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "harry_potter"
+    title: "Hogwarts Wizard"
+    description: "Become a powerful wizard in Hogwarts robes with glowing magic wand"
+    icon: "🧙‍♂️"
+    category: "Popular Legends"
+    media_type: "image"
+    prompt_template: "Epic portrait of {user_prompt} as a famous Hogwarts wizard student, wearing house robes, holding a glowing magical wand, floating magic spell particles, atmospheric Hogwarts castle library"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
   - id: "cyberpunk_neon"
     title: "Cyberpunk Neon"
     description: "Futuristic neon city character portrait"
@@ -7,6 +27,16 @@ presets:
     media_type: "image"
     prompt_template: "Cyberpunk character portrait of {user_prompt}, vibrant cyan and magenta neon lights, futuristic cybernetic details, rainy Neo-Tokyo background, ultra-detailed 8k render"
     negative_prompt: "blurry, low quality, dark, distorted face"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "cyberpunk"
+    title: "Cyberpunk 2077"
+    description: "Futuristic neon cyber portrait with high-tech implants"
+    icon: "🏙️"
+    category: "Sci-Fi & Cyber"
+    media_type: "image"
+    prompt_template: "High-detail Cyberpunk 2077 aesthetic portrait of {user_prompt}, neon reflection, glowing eye cybernetics, rainy night in futuristic Neo-Tokyo street, octane render"
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
@@ -21,6 +51,16 @@ presets:
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 
+  - id: "renaissance"
+    title: "Renaissance Oil Painting"
+    description: "Classic master portrait in Da Vinci & Rembrandt oil style"
+    icon: "🖼️"
+    category: "Fine Art"
+    media_type: "image"
+    prompt_template: "Masterpiece Renaissance oil painting of {user_prompt}, chiaroscuro dramatic lighting, rich canvas texture, detailed clothing in style of Leonardo da Vinci"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
   - id: "cinematic_anime"
     title: "Studio Ghibli Anime"
     description: "Lush Studio Ghibli style watercolor anime aesthetic"
@@ -29,6 +69,16 @@ presets:
     media_type: "image"
     prompt_template: "Studio Ghibli style watercolor illustration portrait of {user_prompt}, whimsical atmosphere, lush anime aesthetic, Miyazaki art style"
     negative_prompt: "realistic, photograph, 3d, dark, gritty"
+    default_model: "google/gemini-2.5-flash-image"
+    supports_reference_photo: true
+
+  - id: "anime_hero"
+    title: "Anime Key Visual"
+    description: "Dynamic anime hero artwork inspired by Studio Ghibli & Shonen"
+    icon: "⚔️"
+    category: "Anime"
+    media_type: "image"
+    prompt_template: "High octane anime key visual of {user_prompt}, vibrant colors, sharp cell shading, dramatic camera angle, epic fantasy background"
     default_model: "google/gemini-2.5-flash-image"
     supports_reference_photo: true
 

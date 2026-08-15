@@ -1,7 +1,7 @@
 import io
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import BaseStorage, StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -22,6 +22,7 @@ from platform_core.fsm_storage import (
     get_fsm_storage,
 )
 from platform_core.modules.builder import ModularBotBuilder
+from platform_core.presets import preset_manager
 
 
 @pytest.mark.asyncio
@@ -42,11 +43,16 @@ async def test_fsm_storage_providers_and_factory():
     assert isinstance(storage_none, MemoryStorage)
 
     # 4. Redis provider with simulated valid redis
-    redis_provider = RedisFSMStorageProvider(redis_url="redis://localhost:6379/0", key_prefix="test_fsm")
+    redis_provider = RedisFSMStorageProvider(
+        redis_url="redis://localhost:6379/0", key_prefix="test_fsm"
+    )
     assert isinstance(redis_provider, BaseFSMStorageProvider)
 
     # 5. Redis fallback to memory when redis connection fails
-    with patch("aiogram.fsm.storage.redis.RedisStorage.__init__", side_effect=Exception("Redis connection error")):
+    with patch(
+        "aiogram.fsm.storage.redis.RedisStorage.__init__",
+        side_effect=Exception("Redis connection error"),
+    ):
         fallback_storage = redis_provider.create_storage()
         assert isinstance(fallback_storage, MemoryStorage)
 
@@ -74,6 +80,7 @@ async def test_multi_replica_state_synchronization():
     - Replica B resolves the photo via Bot API and starts generation with photo reference.
     - State is cleanly cleared across all replicas.
     """
+    await preset_manager.seed_presets_from_file("bots/image_bot/presets.yaml")
     shared_storage = MemoryStorage()
     key = StorageKey(bot_id=123456, chat_id=5001, user_id=9001)
 
@@ -87,7 +94,9 @@ async def test_multi_replica_state_synchronization():
 
     mock_bot = AsyncMock()
     mock_bot.token = "123456:MOCK_TOKEN"
-    file_obj = File(file_id="distributed_photo_999", file_unique_id="u999", file_path="photos/bob.jpg")
+    file_obj = File(
+        file_id="distributed_photo_999", file_unique_id="u999", file_path="photos/bob.jpg"
+    )
     mock_bot.get_file = AsyncMock(return_value=file_obj)
     mock_bot.download_file = AsyncMock(return_value=io.BytesIO(b"BOB_PHOTO_BINARY_DATA"))
     mock_bot.send_message = AsyncMock(return_value=MagicMock(message_id=101))
@@ -97,7 +106,9 @@ async def test_multi_replica_state_synchronization():
     photo_msg.message_id = 50
     photo_msg.chat = chat
     photo_msg.from_user = user
-    photo_msg.photo = [PhotoSize(file_id="distributed_photo_999", file_unique_id="u999", width=640, height=640)]
+    photo_msg.photo = [
+        PhotoSize(file_id="distributed_photo_999", file_unique_id="u999", width=640, height=640)
+    ]
     photo_msg.caption = None
     photo_msg.answer = AsyncMock()
 
@@ -126,7 +137,9 @@ async def test_multi_replica_state_synchronization():
     callback.message = cb_msg
     callback.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_preset_selection(
             callback=callback,
             state=replica_b_context,
@@ -161,7 +174,9 @@ async def test_multi_replica_custom_text_prompt():
 
     mock_bot = AsyncMock()
     mock_bot.token = "123456:MOCK_TOKEN"
-    file_obj = File(file_id="photo_custom_777", file_unique_id="u777", file_path="photos/charlie.jpg")
+    file_obj = File(
+        file_id="photo_custom_777", file_unique_id="u777", file_path="photos/charlie.jpg"
+    )
     mock_bot.get_file = AsyncMock(return_value=file_obj)
     mock_bot.download_file = AsyncMock(return_value=io.BytesIO(b"CHARLIE_RAW_PHOTO_DATA"))
     mock_bot.send_message = AsyncMock(return_value=MagicMock(message_id=102))
@@ -171,7 +186,9 @@ async def test_multi_replica_custom_text_prompt():
     photo_msg.message_id = 60
     photo_msg.chat = chat
     photo_msg.from_user = user
-    photo_msg.photo = [PhotoSize(file_id="photo_custom_777", file_unique_id="u777", width=640, height=640)]
+    photo_msg.photo = [
+        PhotoSize(file_id="photo_custom_777", file_unique_id="u777", width=640, height=640)
+    ]
     photo_msg.caption = None
     photo_msg.answer = AsyncMock()
 
@@ -190,7 +207,9 @@ async def test_multi_replica_custom_text_prompt():
     text_msg.text = "Paint in watercolor style"
     text_msg.answer = AsyncMock()
 
-    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+    with patch(
+        "platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock
+    ) as mock_run_gen:
         await handle_custom_text_prompt(
             message=text_msg,
             state=replica_b_context,

@@ -1,11 +1,13 @@
-from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
+from unittest.mock import AsyncMock
+
 import pytest
-from aiogram.types import User as TelegramUser, Message, CallbackQuery, Chat
-from platform_core.bot.handlers import handle_models_menu, handle_set_model, handle_start_command
-from platform_core.db import db, UserProfile
-from platform_core.generators import DEFAULT_AVAILABLE_MODELS
-from platform_core.modules import ModularBotBuilder, ImageGenModule
+from aiogram.types import CallbackQuery, Message
+from aiogram.types import User as TelegramUser
+
+from platform_core.bot.handlers import handle_models_menu, handle_set_model
+from platform_core.db import UserProfile, db
+from platform_core.modules import ImageGenModule, ModularBotBuilder
 from platform_core.presets import PromptPreset, preset_manager
 
 
@@ -53,7 +55,7 @@ async def test_handle_set_model_callback():
     assert db_profile.selected_model == "openai/dall-e-3"
 
     callback.message.edit_text.assert_called_once()
-    args, kwargs = callback.message.edit_text.call_args
+    args, _ = callback.message.edit_text.call_args
     assert "dall-e-3" in args[0]
 
 
@@ -67,6 +69,7 @@ async def test_common_presets_with_bot_specific_promotions(tmp_path: Path):
     Both bots can see all presets, but their promoted preset is shown first!
     """
     preset_manager.clear_custom_presets()
+    await preset_manager.seed_presets_from_file("bots/image_bot/presets.yaml")
 
     # Define custom preset for Bot 1 (Bald Portrait)
     bald_preset = PromptPreset(
@@ -84,7 +87,7 @@ async def test_common_presets_with_bot_specific_promotions(tmp_path: Path):
         .add_module(ImageGenModule())
         .add_preset(bald_preset, promote=True)
     )
-    bot1_app = bot1_builder.build()
+    _ = bot1_builder.build()
 
     # Bot 2 Builder: promotes 'harry_potter' (which is in standard defaults)
     bot2_builder = (
@@ -92,7 +95,7 @@ async def test_common_presets_with_bot_specific_promotions(tmp_path: Path):
         .add_module(ImageGenModule())
         .set_promoted_preset_ids(["harry_potter"])
     )
-    bot2_app = bot2_builder.build()
+    _ = bot2_builder.build()
 
     # 1. Fetch presets for Bot 1 (bald_bot)
     bot1_presets = await preset_manager.get_presets(media_type="image", bot_id="bald_bot")
@@ -117,6 +120,9 @@ async def test_common_presets_with_bot_specific_promotions(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_bot_yaml_config_promoted_presets(tmp_path: Path):
+    preset_manager.clear_custom_presets()
+    await preset_manager.seed_presets_from_file("bots/image_bot/presets.yaml")
+
     config_file = tmp_path / "custom_bot.yaml"
     config_file.write_text(
         """
@@ -133,7 +139,7 @@ modules:
     )
 
     builder = ModularBotBuilder.from_config(config_file)
-    bot_app = builder.build()
+    _ = builder.build()
 
     presets = await preset_manager.get_presets(media_type="image", bot_id="promo_test_bot")
     assert len(presets) >= 2

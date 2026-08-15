@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from aiogram.types import Message, User
-from platform_core.i18n import i18n, I18nManager
+
 from platform_core.bot.middlewares import I18nMiddleware
-from platform_core.db import db, UserProfile
+from platform_core.db import UserProfile, db
+from platform_core.i18n import i18n
 
 
 def test_i18n_manager_translations_loaded():

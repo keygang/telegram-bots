@@ -1,7 +1,9 @@
 import asyncio
 import io
 import time
-from PIL import Image, ImageDraw, ImageFont
+
+from PIL import Image, ImageDraw
+
 from platform_core.generators.base import BaseMediaGenerator, GenerationRequest, GenerationResponse
 
 
@@ -21,13 +23,24 @@ class MockMediaGenerator(BaseMediaGenerator):
         draw = ImageDraw.Draw(img)
 
         # Draw decorative background elements
-        draw.rectangle([(20, 20), (request.width - 20, request.height - 20)], outline=(100, 150, 255), width=4)
-        draw.ellipse([(request.width // 4, request.height // 4), (3 * request.width // 4, 3 * request.height // 4)], outline=(255, 100, 200), width=2)
+        draw.rectangle(
+            [(20, 20), (request.width - 20, request.height - 20)], outline=(100, 150, 255), width=4
+        )
+        draw.ellipse(
+            [
+                (request.width // 4, request.height // 4),
+                (3 * request.width // 4, 3 * request.height // 4),
+            ],
+            outline=(255, 100, 200),
+            width=2,
+        )
 
         # Text banner
         title_text = "AI GENERATED MOCK PHOTO"
         prompt_text = f"Prompt: {request.prompt[:60]}..."
-        ref_text = "Photo Reference: YES" if request.reference_photo_bytes else "Photo Reference: NO"
+        ref_text = (
+            "Photo Reference: YES" if request.reference_photo_bytes else "Photo Reference: NO"
+        )
 
         draw.text((50, 80), title_text, fill=(255, 255, 255))
         draw.text((50, 140), prompt_text, fill=(200, 220, 255))
@@ -49,5 +62,5 @@ class MockMediaGenerator(BaseMediaGenerator):
                 "type": "image",
                 "prompt": request.prompt,
                 "has_reference_photo": bool(request.reference_photo_bytes),
-            }
+            },
         )

@@ -1,16 +1,12 @@
 import argparse
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import List, Optional
-import yaml
-from platform_core.config import settings
-from platform_core.modules.builder import ModularBotBuilder, ModularBot
 
+from platform_core.config import settings
 from platform_core.logging_config import setup_logging
-from platform_core.metrics.prometheus import record_prometheus_event
+from platform_core.modules import BotInstanceConfig, ModularBot, ModularBotBuilder
 
 # Configure structured logging (JSON or text based on LOG_FORMAT env)
 setup_logging()
@@ -19,7 +15,7 @@ logger = logging.getLogger("platform_cli")
 INSTANCES_DIR = Path("instances")
 
 
-def get_instance_config_files() -> List[Path]:
+def get_instance_config_files() -> list[Path]:
     """Finds all instance YAML configuration files in instances/ directory."""
     if not INSTANCES_DIR.exists():
         return []
@@ -27,7 +23,7 @@ def get_instance_config_files() -> List[Path]:
     return sorted(configs)
 
 
-def resolve_config_path(bot_name_or_path: str) -> Optional[Path]:
+def resolve_config_path(bot_name_or_path: str) -> Path | None:
     """Resolves a bot name or path to a valid configuration file."""
     path = Path(bot_name_or_path)
     if path.exists() and path.is_file():
@@ -51,22 +47,23 @@ def list_instances():
         print("ℹ️ No bot instance configuration files found in instances/ directory.")
         return
 
-    print(f"\n📋 Configured Bot Instances ({len(configs)} found in {INSTANCES_DIR.absolute()}):\n" + "─" * 70)
+    print(
+        f"\n📋 Configured Bot Instances ({len(configs)} found in {INSTANCES_DIR.absolute()}):\n"
+        + "─" * 70
+    )
     for cfg_path in configs:
         try:
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            bot_id = data.get("bot_id", cfg_path.stem)
-            token_env = data.get("token_env", "N/A")
-            strat = data.get("strategy")
+            bot_cfg = BotInstanceConfig.from_yaml_file(cfg_path)
+            bot_id = bot_cfg.bot_id or cfg_path.stem
+            token_env = bot_cfg.token_env or "N/A"
+            strat = bot_cfg.strategy
             if not strat:
-                webhook_cfg = data.get("webhook", {})
-                if isinstance(webhook_cfg, dict) and "enabled" in webhook_cfg:
-                    strat = "webhook" if webhook_cfg["enabled"] else "polling"
+                if bot_cfg.webhook and bot_cfg.webhook.enabled:
+                    strat = "webhook"
                 else:
                     strat = settings.BOT_STRATEGY
-            modules = [m.get("name") for m in data.get("modules", []) if isinstance(m, dict) and m.get("enabled", True)]
-            preset_count = len(data.get("presets", []))
+            modules = [m.name for m in bot_cfg.modules if m.enabled]
+            preset_count = len(bot_cfg.presets)
             print(f"  • Bot ID      : {bot_id}")
             print(f"    Config Path : {cfg_path}")
             print(f"    Strategy    : {strat.upper()}")
@@ -78,7 +75,9 @@ def list_instances():
             print(f"  ❌ Error reading {cfg_path}: {e}")
 
 
-async def run_bot_instance(config_path: Path, force_mock: bool = False, strategy: Optional[str] = None):
+async def run_bot_instance(
+    config_path: Path, force_mock: bool = False, strategy: str | None = None
+):
     """Loads a bot instance from YAML config and starts instance."""
     logger.info(f"Loading bot instance from configuration: {config_path}")
     builder = ModularBotBuilder.from_config(config_path)
@@ -88,12 +87,14 @@ async def run_bot_instance(config_path: Path, force_mock: bool = False, strategy
     await bot_app.run(force_mock=force_mock)
 
 
-async def run_all_instances(force_mock: bool = False, strategy: Optional[str] = None):
+async def run_all_instances(force_mock: bool = False, strategy: str | None = None):
     """Loads and starts all configured bot instances concurrently."""
     configs = get_instance_config_files()
     if configs:
-        logger.info(f"🚀 Found {len(configs)} instance configs in instances/. Launching all concurrently...")
-        bot_apps: List[ModularBot] = []
+        logger.info(
+            f"🚀 Found {len(configs)} instance configs in instances/. Launching all concurrently..."
+        )
+        bot_apps: list[ModularBot] = []
         for cfg_path in configs:
             try:
                 builder = ModularBotBuilder.from_config(cfg_path)
@@ -108,8 +109,11 @@ async def run_all_instances(force_mock: bool = False, strategy: Optional[str] = 
             return
 
     # Fallback if no instance files are defined
-    logger.info("No YAML instance files found in instances/. Falling back to legacy default image bot...")
+    logger.info(
+        "No YAML instance files found in instances/. Falling back to legacy default image bot..."
+    )
     from bots.image_bot.bot import run_image_bot
+
     await run_image_bot(force_mock=force_mock)
 
 
@@ -145,18 +149,40 @@ def main():
     )
 
     # Command: server
-    server_parser = subparsers.add_parser("server", help="Launch FastAPI Telegram Webhook Gateway Server")
-    server_parser.add_argument("--host", default=settings.SERVER_HOST, help="Host interface to bind")
-    server_parser.add_argument("--port", type=int, default=settings.SERVER_PORT, help="Port to bind")
+    server_parser = subparsers.add_parser(
+        "server", help="Launch FastAPI Telegram Webhook Gateway Server"
+    )
+    server_parser.add_argument(
+        "--host", default=settings.SERVER_HOST, help="Host interface to bind"
+    )
+    server_parser.add_argument(
+        "--port", type=int, default=settings.SERVER_PORT, help="Port to bind"
+    )
     server_parser.add_argument("--reload", action="store_true", help="Enable uvicorn auto-reload")
 
     # Command: worker
-    worker_parser = subparsers.add_parser("worker", help="Launch background AI Generation worker pool")
-    worker_parser.add_argument("--concurrency", type=int, default=4, help="Worker concurrency count")
+    worker_parser = subparsers.add_parser(
+        "worker", help="Launch background AI Generation worker pool"
+    )
+    worker_parser.add_argument(
+        "--concurrency", type=int, default=4, help="Worker concurrency count"
+    )
     worker_parser.add_argument("--mock", action="store_true", help="Force mock AI generator mode")
 
     # Command: list
     subparsers.add_parser("list", help="List all configured bot instances in instances/")
+
+    # Command: seed-presets
+    seed_parser = subparsers.add_parser(
+        "seed-presets", help="Fill database with prompt presets from a YAML or JSON file"
+    )
+    seed_parser.add_argument(
+        "--file",
+        "-f",
+        type=str,
+        default="bots/image_bot/presets.yaml",
+        help="Path to presets YAML or JSON file (default: bots/image_bot/presets.yaml)",
+    )
 
     args = parser.parse_args()
 
@@ -164,20 +190,33 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    if args.command == "seed-presets":
+        from scripts.seed_presets import seed_presets
+
+        preset_file = Path(args.file)
+        if not preset_file.is_absolute():
+            preset_file = Path.cwd() / preset_file
+        count = asyncio.run(seed_presets(preset_file))
+        sys.exit(0 if count > 0 else 1)
+
     if args.command == "list":
         list_instances()
         sys.exit(0)
 
     if args.command == "server":
         import uvicorn
+
         logger.info(f"🚀 Launching Webhook Gateway Server at http://{args.host}:{args.port}")
         uvicorn.run("platform_core.server:app", host=args.host, port=args.port, reload=args.reload)
         sys.exit(0)
 
     if args.command == "worker":
         from platform_core.queue.worker import AIWorkerPool
+
         force_mock = args.mock or settings.USE_MOCK_GENERATOR
-        logger.info(f"⚙️ Launching AI Worker Pool (Concurrency: {args.concurrency}, Mock: {force_mock})")
+        logger.info(
+            f"⚙️ Launching AI Worker Pool (Concurrency: {args.concurrency}, Mock: {force_mock})"
+        )
         pool = AIWorkerPool(concurrency=args.concurrency, force_mock=force_mock)
         try:
             asyncio.run(pool.start())
@@ -190,7 +229,7 @@ def main():
         if force_mock:
             logger.info("⚡ Launching in MOCK mode (Offline testing with zero API credit usage)")
 
-        config_file: Optional[Path] = None
+        config_file: Path | None = None
         if args.config:
             config_file = Path(args.config)
             if not config_file.exists():
@@ -203,18 +242,24 @@ def main():
                 config_file = resolved
             elif args.bot_name == "image_bot":
                 from bots.image_bot.bot import run_image_bot
+
                 asyncio.run(run_image_bot(force_mock=force_mock))
                 sys.exit(0)
             elif args.bot_name == "admin_bot":
                 from bots.admin_bot.bot import run_admin_bot
+
                 asyncio.run(run_admin_bot())
                 sys.exit(0)
             else:
-                logger.error(f"Could not find bot instance configuration for '{args.bot_name}' in instances/ directory.")
+                logger.error(
+                    f"Could not find bot instance configuration for '{args.bot_name}' in instances/ directory."
+                )
                 sys.exit(1)
 
         if config_file:
-            asyncio.run(run_bot_instance(config_file, force_mock=force_mock, strategy=args.strategy))
+            asyncio.run(
+                run_bot_instance(config_file, force_mock=force_mock, strategy=args.strategy)
+            )
         else:
             asyncio.run(run_all_instances(force_mock=force_mock, strategy=args.strategy))
 

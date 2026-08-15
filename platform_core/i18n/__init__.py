@@ -1,3 +1,3 @@
-from platform_core.i18n.manager import i18n, I18nManager, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
+from platform_core.i18n.manager import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, I18nManager, i18n
 
-__all__ = ["i18n", "I18nManager", "SUPPORTED_LANGUAGES", "DEFAULT_LANGUAGE"]
+__all__ = ["DEFAULT_LANGUAGE", "SUPPORTED_LANGUAGES", "I18nManager", "i18n"]

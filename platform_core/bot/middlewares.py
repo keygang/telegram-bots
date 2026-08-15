@@ -1,14 +1,17 @@
 import logging
-from typing import Any, Callable, Dict, Awaitable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Update, Message, CallbackQuery, User
-from platform_core.db import db, UserProfile
+from aiogram.types import TelegramObject, Update, User
+
+from platform_core.db import UserProfile, db
 from platform_core.i18n import i18n
 
 logger = logging.getLogger(__name__)
 
 
-def _get_user_from_event(event: TelegramObject, data: Dict[str, Any]) -> Optional[User]:
+def _get_user_from_event(event: TelegramObject, data: dict[str, Any]) -> User | None:
     """Helper to safely extract the Telegram User across Update and specific event types."""
     user = data.get("event_from_user")
     if user:
@@ -22,9 +25,9 @@ class UserSyncMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: dict[str, Any],
     ) -> Any:
         user = _get_user_from_event(event, data)
 
@@ -51,12 +54,12 @@ class I18nMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: dict[str, Any],
     ) -> Any:
         user = _get_user_from_event(event, data)
-        user_profile: Optional[UserProfile] = data.get("user_profile")
+        user_profile: UserProfile | None = data.get("user_profile")
         raw_lang = None
 
         if user_profile and user_profile.language_code:
@@ -81,9 +84,9 @@ class CreditCheckMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: dict[str, Any],
     ) -> Any:
         user = _get_user_from_event(event, data)
 
@@ -92,4 +95,3 @@ class CreditCheckMiddleware(BaseMiddleware):
             data["user_balance"] = balance
 
         return await handler(event, data)
-

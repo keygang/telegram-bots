@@ -1,6 +1,5 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from aiogram.fsm.storage.base import BaseStorage
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -46,10 +45,12 @@ class RedisFSMStorageProvider(BaseFSMStorageProvider):
 
     def create_storage(self) -> BaseStorage:
         try:
-            from aiogram.fsm.storage.redis import DefaultKeyBuilder, RedisStorage
             import redis.asyncio as aioredis
+            from aiogram.fsm.storage.redis import DefaultKeyBuilder, RedisStorage
 
-            logger.info(f"Connecting to Redis at {self.redis_url} for distributed FSM storage (prefix={self.key_prefix})...")
+            logger.info(
+                f"Connecting to Redis at {self.redis_url} for distributed FSM storage (prefix={self.key_prefix})..."
+            )
             redis_client = aioredis.from_url(
                 self.redis_url,
                 decode_responses=False,
@@ -72,7 +73,7 @@ class FSMStorageFactory:
 
     @staticmethod
     def get_provider(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         force_memory: bool = False,
         key_prefix: str = "fsm",
     ) -> BaseFSMStorageProvider:
@@ -85,7 +86,7 @@ class FSMStorageFactory:
     @classmethod
     def create_storage(
         cls,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         force_memory: bool = False,
         key_prefix: str = "fsm",
     ) -> BaseStorage:
@@ -99,7 +100,7 @@ class FSMStorageFactory:
 
 
 def get_fsm_storage(
-    redis_url: Optional[str] = None,
+    redis_url: str | None = None,
     force_memory: bool = False,
     key_prefix: str = "fsm",
 ) -> BaseStorage:

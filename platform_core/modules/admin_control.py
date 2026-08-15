@@ -1,8 +1,10 @@
-from typing import Any, List
+from typing import Any
+
 from aiogram import Router
 from aiogram.types import BotCommand
-from platform_core.modules.base import BaseBotModule
+
 from bots.admin_bot.bot import admin_router
+from platform_core.modules.base import BaseBotModule, ModuleInfo
 
 
 class AdminControlModule(BaseBotModule):
@@ -20,9 +22,12 @@ class AdminControlModule(BaseBotModule):
     def router(self) -> Router:
         return self._router
 
-    def get_bot_commands(self) -> List[BotCommand]:
+    def get_bot_commands(self) -> list[BotCommand]:
         return [
             BotCommand(command="admin", description="👑 Open Admin Dashboard"),
             BotCommand(command="menu", description="👑 Open Admin Dashboard"),
             BotCommand(command="stats", description="📊 View Platform Telemetry & Metrics"),
         ]
+
+    def get_module_info(self) -> ModuleInfo:
+        return ModuleInfo(name=self.name)

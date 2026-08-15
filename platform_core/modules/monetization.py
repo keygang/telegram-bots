@@ -1,8 +1,10 @@
-from typing import Any, List, Optional
+from typing import Any
+
 from aiogram import Router
 from aiogram.types import BotCommand
+
 from platform_core.bot.middlewares import CreditCheckMiddleware
-from platform_core.modules.base import BaseBotModule
+from platform_core.modules.base import BaseBotModule, ModuleInfo
 from platform_core.payments.handlers import payments_router
 from platform_core.payments.packages import STAR_PACKAGES, StarPackage
 
@@ -18,7 +20,7 @@ class MonetizationModule(BaseBotModule):
 
     def __init__(
         self,
-        star_packages: Optional[List[StarPackage]] = None,
+        star_packages: list[StarPackage] | None = None,
         enable_credit_check: bool = True,
         **_kwargs: Any,
     ):
@@ -31,13 +33,22 @@ class MonetizationModule(BaseBotModule):
         return self._router
 
     @property
-    def middlewares(self) -> List[Any]:
+    def middlewares(self) -> list[Any]:
         if self.enable_credit_check:
             return [CreditCheckMiddleware()]
         return []
 
-    def get_bot_commands(self) -> List[BotCommand]:
+    def get_bot_commands(self) -> list[BotCommand]:
         return [
             BotCommand(command="buy", description="⭐️ Buy Credits with Telegram Stars"),
             BotCommand(command="balance", description="💳 Check your Credit Balance"),
         ]
+
+    def get_module_info(self) -> ModuleInfo:
+        return ModuleInfo(
+            name=self.name,
+            details={
+                "packages_count": len(self.star_packages),
+                "enable_credit_check": self.enable_credit_check,
+            },
+        )

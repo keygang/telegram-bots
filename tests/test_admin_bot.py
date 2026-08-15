@@ -1,16 +1,19 @@
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from aiogram.types import User as TelegramUser, Message, CallbackQuery, Chat
-from platform_core.config import settings
-from platform_core.presets import PromptPreset, preset_manager
+from aiogram.types import CallbackQuery, Message
+from aiogram.types import User as TelegramUser
+
 from bots.admin_bot.bot import (
     AdminAuthMiddleware,
-    cmd_admin_menu,
-    cb_presets_list,
+    cb_preset_del_do,
     cb_preset_detail,
     cb_preset_toggle,
-    cb_preset_del_do,
+    cb_presets_list,
+    cmd_admin_menu,
 )
+from platform_core.config import settings
+from platform_core.presets import PromptPreset, preset_manager
 
 
 @pytest.mark.asyncio
@@ -126,6 +129,7 @@ async def test_admin_preset_management_handlers():
 
 def test_build_main_admin_keyboard():
     from bots.admin_bot.bot import build_main_admin_keyboard
+
     kb = build_main_admin_keyboard()
     assert kb.inline_keyboard
     for row in kb.inline_keyboard:
@@ -138,7 +142,7 @@ def test_build_main_admin_keyboard():
 @pytest.mark.asyncio
 async def test_admin_analytics_handler():
     from bots.admin_bot.bot import cb_analytics
-    from platform_core.db import db, BotEvent
+    from platform_core.db import BotEvent, db
 
     await db.record_event(
         BotEvent(
@@ -167,14 +171,14 @@ async def test_admin_analytics_handler():
 @pytest.mark.asyncio
 async def test_cmd_admin_stats():
     from bots.admin_bot.bot import cmd_admin_stats
-    from platform_core.db import db, BotEvent
+    from platform_core.db import BotEvent, db
 
     await db.record_event(
         BotEvent(
-            bot_id="admin_test_bot",
+            bot_id="image_bot",
             user_id=12345,
             event_type="command",
-            event_name="/stats",
+            event_name="/start",
             duration_ms=10,
         )
     )
@@ -192,17 +196,25 @@ async def test_cmd_admin_stats():
 @pytest.mark.asyncio
 async def test_admin_analytics_subviews():
     from bots.admin_bot.bot import (
+        cb_analytics_bots,
         cb_analytics_buttons,
         cb_analytics_commands,
-        cb_analytics_bots,
         cb_analytics_generations,
     )
-    from platform_core.db import db, BotEvent, GenerationLog
+    from platform_core.db import BotEvent, GenerationLog, db
 
     bot_id = "test_bot_subviews"
-    await db.record_event(BotEvent(bot_id=bot_id, user_id=1, event_type="click", event_name="btn_ok", duration_ms=5))
-    await db.record_event(BotEvent(bot_id=bot_id, user_id=1, event_type="command", event_name="/help", duration_ms=8))
-    await db.log_generation(GenerationLog(bot_id=bot_id, user_id=1, model_name="gemini", prompt="test", status="success"))
+    await db.record_event(
+        BotEvent(bot_id=bot_id, user_id=1, event_type="click", event_name="btn_ok", duration_ms=5)
+    )
+    await db.record_event(
+        BotEvent(bot_id=bot_id, user_id=1, event_type="command", event_name="/help", duration_ms=8)
+    )
+    await db.log_generation(
+        GenerationLog(
+            bot_id=bot_id, user_id=1, model_name="gemini", prompt="test", status="success"
+        )
+    )
 
     cb = AsyncMock(spec=CallbackQuery)
     cb.message = AsyncMock()
@@ -226,6 +238,16 @@ async def test_admin_analytics_subviews():
     await cb_analytics_generations(cb)
     assert "AI Generations & Models" in cb.message.edit_text.call_args[0][0]
 
+    # Messages table subview
+    from bots.admin_bot.bot import cb_analytics_errors, cb_analytics_live, cb_analytics_messages
 
+    await cb_analytics_messages(cb)
+    assert "Outgoing Messages Telemetry" in cb.message.edit_text.call_args[0][0]
 
+    # Errors table subview
+    await cb_analytics_errors(cb)
+    assert "Application Errors & Platform Health" in cb.message.edit_text.call_args[0][0]
 
+    # Live Feed subview
+    await cb_analytics_live(cb)
+    assert "Real-Time Event Stream Feed" in cb.message.edit_text.call_args[0][0]

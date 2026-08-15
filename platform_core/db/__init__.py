@@ -1,15 +1,41 @@
-from .models import UserProfile, UserBalance, StarTransaction, BotEvent, GenerationLog
-from .supabase_client import SupabaseManager, db
+from .models import (
+    AnalyticsEvent,
+    BotBreakdownMetric,
+    BotEvent,
+    ButtonClickMetric,
+    CommandMetric,
+    ErrorBreakdownMetric,
+    Event,
+    GenerationLog,
+    MessageBreakdownMetric,
+    MetricsSummary,
+    ModelBreakdownMetric,
+    RecentEventMetric,
+    StarTransaction,
+    UserBalance,
+    UserProfile,
+)
 from .nosql import SupabaseNoSQLManager, nosql_manager
+from .supabase_client import SupabaseManager, db
 
 __all__ = [
-    "UserProfile",
-    "UserBalance",
-    "StarTransaction",
+    "AnalyticsEvent",
+    "BotBreakdownMetric",
     "BotEvent",
+    "ButtonClickMetric",
+    "CommandMetric",
+    "ErrorBreakdownMetric",
+    "Event",
     "GenerationLog",
+    "MessageBreakdownMetric",
+    "MetricsSummary",
+    "ModelBreakdownMetric",
+    "RecentEventMetric",
+    "StarTransaction",
     "SupabaseManager",
-    "db",
     "SupabaseNoSQLManager",
+    "UserBalance",
+    "UserProfile",
+    "db",
     "nosql_manager",
 ]

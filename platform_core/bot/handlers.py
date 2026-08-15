@@ -1,41 +1,57 @@
 import base64
-import io
+import contextlib
 import logging
 import time
 import uuid
-from typing import List, Optional, Callable, Dict, Any
-from aiogram import Router, F, Bot
+from collections.abc import Callable
+from typing import Any
+
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
+
 from platform_core.bot.keyboards import (
-    get_presets_keyboard,
-    get_waiting_for_photo_keyboard,
     get_cancel_keyboard,
-    get_models_keyboard,
-    get_star_packages_keyboard,
-    get_main_action_keyboard,
-    get_settings_keyboard,
     get_language_keyboard,
+    get_models_keyboard,
+    get_presets_keyboard,
+    get_settings_keyboard,
+    get_star_packages_keyboard,
+    get_waiting_for_photo_keyboard,
 )
-from platform_core.bot.states import GenerationStates
-from platform_core.db import db, GenerationLog, UserBalance, UserProfile
-from platform_core.generators import GeneratorFactory, GenerationRequest, DEFAULT_AVAILABLE_MODELS
-from platform_core.i18n import i18n, SUPPORTED_LANGUAGES
+from platform_core.bot.states import GenerationStateData, GenerationStates
+from platform_core.db import UserBalance, UserProfile, db
+from platform_core.events import (
+    CommandEvent,
+    GenerationEvent,
+    MessageSentEvent,
+    get_tracker,
+)
+from platform_core.generators import DEFAULT_AVAILABLE_MODELS, GenerationRequest, GeneratorFactory
+from platform_core.i18n import SUPPORTED_LANGUAGES, i18n
 from platform_core.payments.packages import STAR_PACKAGES
-from platform_core.presets import preset_manager, PromptPreset
-from platform_core.queue import task_broker, GenerationJob
+from platform_core.presets import preset_manager
+from platform_core.queue import GenerationJob, task_broker
 
 logger = logging.getLogger(__name__)
 core_router = Router(name="core_router")
 
 
-def get_translator(data_dict: Dict[str, Any]) -> Callable[..., str]:
+def _resolve_gettext(_: Callable[..., str] | None) -> Callable[..., str]:
+    return _ if _ is not None else i18n.get
+
+
+def get_translator(data_dict: dict[str, Any]) -> Callable[..., str]:
     """Helper to extract translation function from handler data or fallback to default."""
     if "_" in data_dict and callable(data_dict["_"]):
         return data_dict["_"]
     user_lang = data_dict.get("user_lang", "en")
-    return lambda key, **kwargs: i18n.get(key, lang=user_lang, **kwargs)
+
+    def _tr(key: str, **kwargs: Any) -> str:
+        return i18n.get(key, lang=user_lang, **kwargs)
+
+    return _tr
 
 
 async def run_generation_job(
@@ -43,35 +59,43 @@ async def run_generation_job(
     chat_id: int,
     user_id: int,
     prompt: str,
-    preset_id: Optional[str] = None,
-    reference_photo_bytes: Optional[bytes] = None,
+    preset_id: str | None = None,
+    reference_photo_bytes: bytes | None = None,
     media_type: str = "image",
     model_name: str = "google/gemini-2.5-flash-image",
     bot_id: str = "default_bot",
     force_mock: bool = False,
     use_queue: bool = True,
-    _: Optional[Callable[..., str]] = None,
-):
+    _: Callable[..., str] | None = None,
+) -> None:
     """Executes AI generation workflow, checks credits, delivers media, and logs history."""
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
+    tracker = get_tracker(bot_id)
 
     # 1. Credit Check
     has_credit = await db.deduct_user_credit(user_id, amount=1)
     if not has_credit:
-        kb = get_star_packages_keyboard(STAR_PACKAGES, _=_)
+        kb = get_star_packages_keyboard(STAR_PACKAGES, _=gettext)
         await bot.send_message(
             chat_id=chat_id,
-            text=_("out_of_credits"),
+            text=gettext("out_of_credits"),
             reply_markup=kb,
             parse_mode="Markdown",
+        )
+        await tracker.track(
+            MessageSentEvent(
+                distinct_id=user_id,
+                bot_id=bot_id,
+                message_type="out_of_credits",
+                has_reply_markup=True,
+            )
         )
         return
 
     status_msg = await bot.send_message(
         chat_id=chat_id,
-        text=_("generating_creation"),
-        parse_mode="Markdown"
+        text=gettext("generating_creation"),
+        parse_mode="Markdown",
     )
 
     if use_queue:
@@ -111,11 +135,15 @@ async def run_generation_job(
     if res.status == "success":
         # Deliver generated result
         if res.media_bytes:
-            input_file = BufferedInputFile(res.media_bytes, filename=f"generation_{int(time.time())}.jpg")
+            input_file = BufferedInputFile(
+                res.media_bytes, filename=f"generation_{int(time.time())}.jpg"
+            )
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=input_file,
-                caption=_("generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0),
+                caption=gettext(
+                    "generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0
+                ),
                 parse_mode="Markdown",
             )
         elif res.media_urls:
@@ -123,20 +151,20 @@ async def run_generation_job(
             await bot.send_photo(
                 chat_id=chat_id,
                 photo=first_url,
-                caption=_("generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0),
+                caption=gettext(
+                    "generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0
+                ),
                 parse_mode="Markdown",
             )
 
-        try:
+        with contextlib.suppress(Exception):
             await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-        except Exception:
-            pass
 
-        # Log generation
-        await db.log_generation(
-            GenerationLog(
+        # Explicitly track generation and message sent
+        await tracker.track(
+            GenerationEvent(
+                distinct_id=user_id,
                 bot_id=bot_id,
-                user_id=user_id,
                 model_name=model_name,
                 prompt=prompt,
                 preset_id=preset_id,
@@ -145,35 +173,33 @@ async def run_generation_job(
                 duration_ms=duration_ms,
             )
         )
-        try:
-            from platform_core.metrics.prometheus import record_prometheus_generation
-            from platform_core.db import BotEvent
-            record_prometheus_generation(bot_id, "success", model_name)
-            await db.record_event(
-                BotEvent(
-                    bot_id=bot_id,
-                    user_id=user_id,
-                    event_type="generation_success",
-                    event_name=model_name,
-                    duration_ms=duration_ms,
-                    metadata={"preset_id": preset_id},
-                )
+        await tracker.track(
+            MessageSentEvent(
+                distinct_id=user_id,
+                bot_id=bot_id,
+                message_type="photo",
+                has_reply_markup=False,
             )
-        except Exception as e:
-            logger.debug(f"Telemetry logging error: {e}")
+        )
     else:
         # Failure
         await status_msg.edit_text(
-            _("generation_failed", error=res.error_message or "Unknown error"),
-            parse_mode="Markdown"
+            gettext("generation_failed", error=res.error_message or "Unknown error"),
+            parse_mode="Markdown",
         )
         # Refund credit on engine failure
-        await db.add_user_credits(user_id=user_id, bot_id=bot_id, stars_paid=0, credits_to_add=1, telegram_charge_id="refund")
+        await db.add_user_credits(
+            user_id=user_id,
+            bot_id=bot_id,
+            stars_paid=0,
+            credits_to_add=1,
+            telegram_charge_id="refund",
+        )
 
-        await db.log_generation(
-            GenerationLog(
+        await tracker.track(
+            GenerationEvent(
+                distinct_id=user_id,
                 bot_id=bot_id,
-                user_id=user_id,
                 model_name=model_name,
                 prompt=prompt,
                 preset_id=preset_id,
@@ -182,39 +208,41 @@ async def run_generation_job(
                 error_message=res.error_message,
             )
         )
-        try:
-            from platform_core.metrics.prometheus import record_prometheus_generation
-            from platform_core.db import BotEvent
-            record_prometheus_generation(bot_id, "failed", model_name)
-            await db.record_event(
-                BotEvent(
-                    bot_id=bot_id,
-                    user_id=user_id,
-                    event_type="generation_fail",
-                    event_name=model_name,
-                    duration_ms=duration_ms,
-                    metadata={"preset_id": preset_id, "error": res.error_message},
-                )
-            )
-        except Exception as e:
-            logger.debug(f"Telemetry logging error: {e}")
 
 
 @core_router.message(CommandStart())
 async def handle_start_command(
     message: Message,
-    user_balance: Optional[UserBalance] = None,
+    user_balance: UserBalance | None = None,
     bot_id: str = "default_bot",
-    _: Optional[Callable[..., str]] = None
-):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    _: Callable[..., str] | None = None,
+) -> None:
+    gettext = _resolve_gettext(_)
+
+    tracker = get_tracker(bot_id)
+    await tracker.track(
+        CommandEvent(
+            distinct_id=message.from_user.id,
+            bot_id=bot_id,
+            command="/start",
+        )
+    )
 
     credits = user_balance.credits_remaining if user_balance else 3
     presets = await preset_manager.get_presets("image", bot_id=bot_id)
-    welcome_text = _("welcome_text", credits=credits)
-    kb = get_presets_keyboard(presets, _=_)
+    welcome_text = gettext("welcome_text", credits=credits)
+    kb = get_presets_keyboard(presets, _=gettext)
     await message.answer(welcome_text, reply_markup=kb, parse_mode="Markdown")
+
+    await tracker.track(
+        MessageSentEvent(
+            distinct_id=message.from_user.id,
+            bot_id=bot_id,
+            message_type="menu",
+            text_length=len(welcome_text),
+            has_reply_markup=True,
+        )
+    )
 
 
 @core_router.message(Command("generate"))
@@ -226,14 +254,13 @@ async def handle_start_command(
 async def handle_presets_menu(
     event: Message | CallbackQuery,
     bot_id: str = "default_bot",
-    _: Optional[Callable[..., str]] = None
-):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    _: Callable[..., str] | None = None,
+) -> None:
+    gettext = _resolve_gettext(_)
 
     presets = await preset_manager.get_presets("image", bot_id=bot_id)
-    kb = get_presets_keyboard(presets, _=_)
-    text = _("presets_menu_title")
+    kb = get_presets_keyboard(presets, _=gettext)
+    text = gettext("presets_menu_title")
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
@@ -242,15 +269,17 @@ async def handle_presets_menu(
 
 
 @core_router.message(Command("reload_presets"))
-async def handle_reload_presets_command(message: Message, _: Optional[Callable[..., str]] = None):
+async def handle_reload_presets_command(
+    message: Message,
+    _: Callable[..., str] | None = None,
+) -> None:
     """Admin command to force reload remote presets from Supabase or Remote JSON URL."""
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     reloaded = await preset_manager.fetch_presets(force_reload=True)
     await message.answer(
-        _("presets_refreshed", count=len(reloaded)),
-        parse_mode="Markdown"
+        gettext("presets_refreshed", count=len(reloaded)),
+        parse_mode="Markdown",
     )
 
 
@@ -258,14 +287,19 @@ async def handle_reload_presets_command(message: Message, _: Optional[Callable[.
 @core_router.message(Command("stars"))
 @core_router.message(Command("balance"))
 @core_router.callback_query(F.data == "open_buy")
-async def handle_buy_menu(event: Message | CallbackQuery, user_balance: Optional[UserBalance] = None, _: Optional[Callable[..., str]] = None):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+async def handle_buy_menu(
+    event: Message | CallbackQuery,
+    user_balance: UserBalance | None = None,
+    _: Callable[..., str] | None = None,
+) -> None:
+    gettext = _resolve_gettext(_)
 
     user_id = event.from_user.id
     balance = user_balance or await db.get_user_balance(user_id)
-    text = _("buy_menu_title", credits=balance.credits_remaining, stars=balance.total_stars_spent)
-    kb = get_star_packages_keyboard(STAR_PACKAGES, _=_)
+    text = gettext(
+        "buy_menu_title", credits=balance.credits_remaining, stars=balance.total_stars_spent
+    )
+    kb = get_star_packages_keyboard(STAR_PACKAGES, _=gettext)
     if isinstance(event, CallbackQuery):
         await event.answer()
         await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
@@ -273,23 +307,21 @@ async def handle_buy_menu(event: Message | CallbackQuery, user_balance: Optional
         await event.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 
-
-
 # --- SETTINGS & LOCALIZATION HANDLERS ---
+
 
 @core_router.message(Command("settings"))
 @core_router.callback_query(F.data == "settings_menu")
 async def handle_settings_menu(
     event: Message | CallbackQuery,
     user_lang: str = "en",
-    _: Optional[Callable[..., str]] = None
-):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    _: Callable[..., str] | None = None,
+) -> None:
+    gettext = _resolve_gettext(_)
 
     lang_display = SUPPORTED_LANGUAGES.get(user_lang, user_lang)
-    text = _("settings_title", language=lang_display)
-    kb = get_settings_keyboard(_=_)
+    text = gettext("settings_title", language=lang_display)
+    kb = get_settings_keyboard(_=gettext)
 
     if isinstance(event, CallbackQuery):
         await event.answer()
@@ -302,22 +334,21 @@ async def handle_settings_menu(
 async def handle_change_language_menu(
     callback: CallbackQuery,
     user_lang: str = "en",
-    _: Optional[Callable[..., str]] = None
-):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    _: Callable[..., str] | None = None,
+) -> None:
+    gettext = _resolve_gettext(_)
 
     await callback.answer()
-    text = _("select_language_title")
-    kb = get_language_keyboard(current_lang=user_lang, _=_)
+    text = gettext("select_language_title")
+    kb = get_language_keyboard(current_lang=user_lang, _=gettext)
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 
 
 @core_router.callback_query(F.data.startswith("set_lang:"))
 async def handle_set_language(
     callback: CallbackQuery,
-    user_profile: Optional[UserProfile] = None
-):
+    user_profile: UserProfile | None = None,
+) -> None:
     lang_code = callback.data.split("set_lang:")[1]
     normalized_lang = i18n.normalize_language_code(lang_code)
     user_id = callback.from_user.id
@@ -341,21 +372,23 @@ async def handle_set_language(
 
 # --- MODEL SELECTION HANDLERS ---
 
+
 @core_router.message(Command("models"))
 @core_router.callback_query(F.data == "models_menu")
 async def handle_models_menu(
     event: Message | CallbackQuery,
-    user_profile: Optional[UserProfile] = None,
-    _: Optional[Callable[..., str]] = None
-):
+    user_profile: UserProfile | None = None,
+    _: Callable[..., str] | None = None,
+) -> None:
     """Displays AI Model Selection menu with current active model checked."""
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
-    current_model = (user_profile and user_profile.selected_model) or "google/gemini-2.5-flash-image"
-    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, current_model, _=_)
+    current_model = (
+        user_profile and user_profile.selected_model
+    ) or "google/gemini-2.5-flash-image"
+    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, current_model, _=gettext)
     short_name = current_model.split("/")[-1]
-    text = _("models_menu_title", current_model=short_name)
+    text = gettext("models_menu_title", current_model=short_name)
 
     if isinstance(event, CallbackQuery):
         await event.answer()
@@ -367,12 +400,11 @@ async def handle_models_menu(
 @core_router.callback_query(F.data.startswith("set_model:"))
 async def handle_set_model(
     callback: CallbackQuery,
-    user_profile: Optional[UserProfile] = None,
-    _: Optional[Callable[..., str]] = None
-):
+    user_profile: UserProfile | None = None,
+    _: Callable[..., str] | None = None,
+) -> None:
     """Persists user model selection and refreshes the model menu."""
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     model_name = callback.data.split("set_model:")[1]
     user_id = callback.from_user.id
@@ -383,16 +415,17 @@ async def handle_set_model(
         user_profile.selected_model = model_name
 
     short_name = model_name.split("/")[-1]
-    alert_text = _("model_changed", model=short_name)
+    alert_text = gettext("model_changed", model=short_name)
     await callback.answer(alert_text, show_alert=True)
 
     # Re-render models menu with new checkmark
-    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, model_name, _=_)
-    text = _("models_menu_title", current_model=short_name)
+    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, model_name, _=gettext)
+    text = gettext("models_menu_title", current_model=short_name)
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 
 
 # --- GENERATION & PROMPT HANDLERS ---
+
 
 @core_router.callback_query(F.data == "cancel_action")
 @core_router.message(Command("cancel"))
@@ -400,16 +433,15 @@ async def handle_cancel_action(
     event: Message | CallbackQuery,
     state: FSMContext,
     bot_id: str = "default_bot",
-    _: Optional[Callable[..., str]] = None
-):
+    _: Callable[..., str] | None = None,
+) -> None:
     """Cancels current selection or active generation state."""
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     await state.clear()
-    text = _("action_cancelled")
+    text = gettext("action_cancelled")
     presets = await preset_manager.get_presets("image", bot_id=bot_id)
-    kb = get_presets_keyboard(presets, has_photo=False, _=_)
+    kb = get_presets_keyboard(presets, has_photo=False, _=gettext)
 
     if isinstance(event, CallbackQuery):
         await event.answer()
@@ -418,15 +450,22 @@ async def handle_cancel_action(
         await event.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 
-async def _resolve_reference_photo(bot: Bot, state_data: dict) -> Optional[bytes]:
+async def _resolve_reference_photo(
+    bot: Bot, state_data: dict[str, Any] | GenerationStateData
+) -> bytes | None:
     """
     Resolves photo bytes from FSM state data.
     Supports lightweight reference_file_id (downloaded on demand) and legacy reference_photo_bytes.
     """
-    ref_bytes = state_data.get("reference_photo_bytes")
+    if isinstance(state_data, GenerationStateData):
+        ref_bytes = state_data.reference_photo_bytes
+        ref_file_id = state_data.reference_file_id
+    else:
+        ref_bytes = state_data.get("reference_photo_bytes")
+        ref_file_id = state_data.get("reference_file_id")
+
     if ref_bytes:
         return ref_bytes
-    ref_file_id = state_data.get("reference_file_id")
     if ref_file_id:
         file_info = await bot.get_file(ref_file_id)
         photo_bytes_io = await bot.download_file(file_info.file_path)
@@ -440,15 +479,14 @@ async def handle_preset_selection(
     state: FSMContext,
     bot: Bot,
     bot_id: str = "default_bot",
-    _: Optional[Callable[..., str]] = None
-):
+    _: Callable[..., str] | None = None,
+) -> None:
     """
     Handles style preset selection.
     If reference photo is already uploaded, immediately generates with photo.
     If no photo is uploaded yet, transitions to waiting_for_photo state so user can upload photo.
     """
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     preset_id = callback.data.split("preset:")[1]
     user_id = callback.from_user.id
@@ -459,11 +497,13 @@ async def handle_preset_selection(
     if preset_id == "custom":
         await state.set_state(GenerationStates.entering_custom_prompt)
         await callback.answer()
-        prompt_text = _("custom_prompt_with_photo") if has_photo else _("enter_custom_prompt")
+        prompt_text = (
+            gettext("custom_prompt_with_photo") if has_photo else gettext("enter_custom_prompt")
+        )
         await callback.message.answer(
             prompt_text,
-            reply_markup=get_cancel_keyboard(_=_),
-            parse_mode="Markdown"
+            reply_markup=get_cancel_keyboard(_=gettext),
+            parse_mode="Markdown",
         )
         return
 
@@ -488,7 +528,7 @@ async def handle_preset_selection(
             media_type=preset.media_type,
             model_name=preset.default_model,
             bot_id=bot_id,
-            _=_
+            _=gettext,
         )
         return
 
@@ -497,12 +537,12 @@ async def handle_preset_selection(
     await state.set_state(GenerationStates.waiting_for_photo)
     await callback.answer(f"Selected: {preset.title}")
 
-    waiting_text = _("preset_selected_send_photo", preset_title=preset.title)
-    kb = get_waiting_for_photo_keyboard(preset.id, _=_)
+    waiting_text = gettext("preset_selected_send_photo", preset_title=preset.title)
+    kb = get_waiting_for_photo_keyboard(preset.id, _=gettext)
     await callback.message.answer(
         waiting_text,
         reply_markup=kb,
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
 
@@ -512,16 +552,15 @@ async def handle_photo_upload(
     state: FSMContext,
     bot: Bot,
     bot_id: str = "default_bot",
-    _: Optional[Callable[..., str]] = None
-):
+    _: Callable[..., str] | None = None,
+) -> None:
     """
     Handles user photo upload.
     If user already selected a preset (waiting_for_photo), immediately triggers generation.
     If photo has a text caption, uses caption as prompt directly with photo.
     Otherwise, saves photo reference_file_id in state and prompts user to pick a style preset.
     """
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     photo = message.photo[-1]  # Highest resolution
     state_data = await state.get_data()
@@ -535,7 +574,11 @@ async def handle_photo_upload(
         photo_bytes_io = await bot.download_file(file_info.file_path)
         photo_bytes = photo_bytes_io.read()
 
-        preset = await preset_manager.get_preset_by_id(selected_preset_id) if selected_preset_id else None
+        preset = (
+            await preset_manager.get_preset_by_id(selected_preset_id)
+            if selected_preset_id
+            else None
+        )
         if preset:
             await state.clear()
             prompt = preset.build_prompt()
@@ -549,7 +592,7 @@ async def handle_photo_upload(
                 media_type=preset.media_type,
                 model_name=preset.default_model,
                 bot_id=bot_id,
-                _=_
+                _=gettext,
             )
             return
 
@@ -570,16 +613,16 @@ async def handle_photo_upload(
                 reference_photo_bytes=photo_bytes,
                 media_type="image",
                 bot_id=bot_id,
-                _=_
+                _=gettext,
             )
             return
 
         # Store photo reference in state and ask for text prompt
         await state.update_data(reference_file_id=photo.file_id, selected_preset_id=None)
         await message.answer(
-            _("custom_prompt_photo_received"),
-            reply_markup=get_cancel_keyboard(_=_),
-            parse_mode="Markdown"
+            gettext("custom_prompt_photo_received"),
+            reply_markup=get_cancel_keyboard(_=gettext),
+            parse_mode="Markdown",
         )
         return
 
@@ -599,7 +642,7 @@ async def handle_photo_upload(
             reference_photo_bytes=photo_bytes,
             media_type="image",
             bot_id=bot_id,
-            _=_
+            _=gettext,
         )
         return
 
@@ -608,11 +651,11 @@ async def handle_photo_upload(
     await state.set_state(GenerationStates.selecting_preset)
 
     presets = await preset_manager.get_presets("image", bot_id=bot_id)
-    kb = get_presets_keyboard(presets, has_photo=True, _=_)
+    kb = get_presets_keyboard(presets, has_photo=True, _=gettext)
     await message.answer(
-        _("photo_received"),
+        gettext("photo_received"),
         reply_markup=kb,
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
 
@@ -622,17 +665,16 @@ async def handle_custom_text_prompt(
     state: FSMContext,
     bot: Bot,
     bot_id: str = "default_bot",
-    user_profile: Optional[UserProfile] = None,
-    _: Optional[Callable[..., str]] = None
-):
+    user_profile: UserProfile | None = None,
+    _: Callable[..., str] | None = None,
+) -> None:
     """
     Handles custom prompt text messages.
     If user has chosen a preset (waiting_for_photo state), rejects text prompt since presets only allow photo uploads.
     If photo was stored in state, generates with photo + custom prompt text.
     If no photo is in state (pure text prompt outside presets), generates pure text-to-image without photo.
     """
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
+    gettext = _resolve_gettext(_)
 
     current_state = await state.get_state()
     state_data = await state.get_data()
@@ -640,11 +682,11 @@ async def handle_custom_text_prompt(
     # If user selected a preset, only photo upload is allowed. Reject text prompts inside preset flow.
     if current_state == GenerationStates.waiting_for_photo.state:
         preset_id = state_data.get("selected_preset_id", "")
-        kb = get_waiting_for_photo_keyboard(preset_id, _=_)
+        kb = get_waiting_for_photo_keyboard(preset_id, _=gettext)
         await message.answer(
-            _("preset_photo_required"),
+            gettext("preset_photo_required"),
             reply_markup=kb,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -664,5 +706,5 @@ async def handle_custom_text_prompt(
         media_type="image",
         model_name=model_name,
         bot_id=bot_id,
-        _=_
+        _=gettext,
     )

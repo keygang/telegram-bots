@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,11 @@ class I18nManager:
     resolving language codes, providing fallbacks, and interpolating strings.
     """
 
-    def __init__(self, locales_dir: Optional[Path] = None):
+    def __init__(self, locales_dir: Path | None = None):
         if locales_dir is None:
             locales_dir = Path(__file__).parent / "locales"
         self.locales_dir = locales_dir
-        self.translations: Dict[str, Dict[str, str]] = {}
+        self.translations: dict[str, dict[str, str]] = {}
         self.supported_languages = SUPPORTED_LANGUAGES.copy()
         self.default_language = DEFAULT_LANGUAGE
         self.load_translations()
@@ -38,14 +38,14 @@ class I18nManager:
         for file_path in self.locales_dir.glob("*.json"):
             lang_code = file_path.stem.lower()
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     self.translations[lang_code] = data
                     logger.info(f"Loaded {len(data)} translation keys for locale '{lang_code}'")
             except Exception as e:
                 logger.error(f"Failed to load translation file {file_path}: {e}")
 
-    def normalize_language_code(self, lang_code: Optional[str]) -> str:
+    def normalize_language_code(self, lang_code: str | None) -> str:
         """
         Normalizes Telegram language codes (e.g. 'ru-RU' -> 'ru', 'es-MX' -> 'es').
         Returns default_language if not supported.
@@ -58,7 +58,7 @@ class I18nManager:
             return code
         return self.default_language
 
-    def get(self, key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
+    def get(self, key: str, lang: str | None = None, **kwargs: Any) -> str:
         """
         Retrieves a translated string by key for the given language.
         Falls back to default_language ('en') if translation is missing.
@@ -71,7 +71,11 @@ class I18nManager:
             text = self.translations[target_lang][key]
 
         # 2. Fallback to default language
-        if text is None and self.default_language in self.translations and key in self.translations[self.default_language]:
+        if (
+            text is None
+            and self.default_language in self.translations
+            and key in self.translations[self.default_language]
+        ):
             text = self.translations[self.default_language][key]
 
         # 3. Ultimate fallback: return key
@@ -88,7 +92,7 @@ class I18nManager:
 
         return text
 
-    def t(self, key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
+    def t(self, key: str, lang: str | None = None, **kwargs: Any) -> str:
         """Alias for get()"""
         return self.get(key, lang=lang, **kwargs)
 

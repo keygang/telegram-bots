@@ -1,9 +1,10 @@
-import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
-from platform_core.config import PlatformSettings, settings
-from platform_core.modules.builder import ModularBotBuilder, ModularBot
-from platform_core.server import initialize_bot_instances, BOT_INSTANCES
+
+import pytest
+
+from platform_core.config import PlatformSettings
+from platform_core.modules.builder import ModularBotBuilder
+from platform_core.server import BOT_INSTANCES, initialize_bot_instances
 
 
 def test_default_platform_strategy():
@@ -47,11 +48,15 @@ def test_builder_strategy_resolution(tmp_path):
 
 @pytest.mark.asyncio
 async def test_modular_bot_run_polling_clears_webhook():
-    builder = ModularBotBuilder(bot_id="test_polling_bot", token="123456789:MOCK_TOKEN", strategy="polling")
+    builder = ModularBotBuilder(
+        bot_id="test_polling_bot", token="123456789:MOCK_TOKEN", strategy="polling"
+    )
     bot_app = builder.build()
 
-    with patch.object(bot_app.bot, "delete_webhook", new_callable=AsyncMock) as mock_del, \
-         patch.object(bot_app.dp, "start_polling", new_callable=AsyncMock) as mock_poll:
+    with (
+        patch.object(bot_app.bot, "delete_webhook", new_callable=AsyncMock) as mock_del,
+        patch.object(bot_app.dp, "start_polling", new_callable=AsyncMock) as mock_poll,
+    ):
         await bot_app.run(force_mock=True)
 
         mock_del.assert_awaited_once_with(drop_pending_updates=True)
@@ -66,6 +71,6 @@ async def test_server_initialization_skips_webhook_for_polling_bots():
 
         # Both admin_bot and image_bot_1 are set to polling strategy in instance configs
         assert len(BOT_INSTANCES) >= 2
-        for bot_id, bot_app in BOT_INSTANCES.items():
+        for bot_app in BOT_INSTANCES.values():
             assert bot_app.strategy == "polling"
             # Verify set_webhook was not invoked for polling bots

@@ -1,8 +1,9 @@
 import pytest
-from fastapi.testclient import TestClient
-from platform_core.server import app, BOT_INSTANCES
-from platform_core.modules.builder import ModularBotBuilder, ModularBot
 from aiogram import Bot, Dispatcher
+from fastapi.testclient import TestClient
+
+from platform_core.modules.builder import ModularBot
+from platform_core.server import BOT_INSTANCES, app
 
 
 @pytest.fixture

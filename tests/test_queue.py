@@ -1,5 +1,7 @@
 import asyncio
+
 import pytest
+
 from platform_core.queue.broker import GenerationJob, TaskQueueBroker
 from platform_core.queue.worker import AIWorkerPool
 
@@ -103,14 +105,17 @@ async def test_worker_process_job_caption_without_model():
         model_name="google/gemini-2.5-flash-image",
     )
 
-    from unittest.mock import AsyncMock, patch, MagicMock
+    from unittest.mock import AsyncMock, patch
+
     mock_bot = AsyncMock()
     mock_bot.send_photo = AsyncMock()
     mock_bot.delete_message = AsyncMock()
 
-    with patch("platform_core.queue.worker.Bot", return_value=mock_bot), \
-         patch("platform_core.db.db.record_event", new_callable=AsyncMock), \
-         patch("platform_core.db.db.log_generation", new_callable=AsyncMock):
+    with (
+        patch("platform_core.queue.worker.Bot", return_value=mock_bot),
+        patch("platform_core.db.db.record_event", new_callable=AsyncMock),
+        patch("platform_core.db.db.log_generation", new_callable=AsyncMock),
+    ):
         await worker_pool.process_job(job)
 
         assert mock_bot.send_photo.called
@@ -119,4 +124,3 @@ async def test_worker_process_job_caption_without_model():
         assert "Model:" not in caption
         assert "gemini-2.5-flash-image" not in caption
         assert "Cyberpunk neon city" in caption
-

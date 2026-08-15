@@ -1,7 +1,6 @@
-from typing import Dict, List, Optional
 from platform_core.presets.base import PromptPreset
 
-DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
+DEFAULT_IMAGE_PRESETS: list[PromptPreset] = [
     PromptPreset(
         id="odyssey",
         title="Homer's Odyssey Warrior",
@@ -59,7 +58,8 @@ DEFAULT_IMAGE_PRESETS: List[PromptPreset] = [
     ),
 ]
 
-def get_preset_by_id(preset_id: str) -> Optional[PromptPreset]:
+
+def get_preset_by_id(preset_id: str) -> PromptPreset | None:
     """Retrieve a preset model by its unique ID across available presets."""
     for preset in DEFAULT_IMAGE_PRESETS:
         if preset.id == preset_id:

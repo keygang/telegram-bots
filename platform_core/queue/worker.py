@@ -1,13 +1,13 @@
 import asyncio
 import base64
+import contextlib
 import logging
-import signal
-import sys
 import time
-from typing import Optional
+
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, URLInputFile
-from platform_core.db import db, GenerationLog, BotEvent
+
+from platform_core.db import BotEvent, GenerationLog, db
 from platform_core.generators.base import GenerationRequest
 from platform_core.generators.factory import GeneratorFactory
 from platform_core.metrics.prometheus import record_prometheus_generation
@@ -24,19 +24,25 @@ class AIWorkerPool:
 
     def __init__(
         self,
-        broker: Optional[TaskQueueBroker] = None,
+        broker: TaskQueueBroker | None = None,
         concurrency: int = 4,
         force_mock: bool = False,
     ):
         self.broker = broker or task_broker
         self.concurrency = concurrency
         self.force_mock = force_mock
-        self.is_running = False
-        self._tasks = []
+        self._running = False
+        self._tasks: list[asyncio.Task[None]] = []
 
-    async def process_job(self, job: GenerationJob):
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    async def process_job(self, job: GenerationJob) -> None:
         """Processes a single AI generation job."""
-        logger.info(f"⚙️ Worker processing job [{job.job_id}] for user {job.user_id} (Model: {job.model_name})")
+        logger.info(
+            f"⚙️ Worker processing job [{job.job_id}] for user {job.user_id} (Model: {job.model_name})"
+        )
         bot = Bot(token=job.bot_token)
         start_time = time.time()
 
@@ -49,7 +55,7 @@ class AIWorkerPool:
                 except Exception as e:
                     logger.warning(f"Failed to decode reference photo for job {job.job_id}: {e}")
 
-            # Instantiate appropriate generator (Replicate or Mock)
+            # Instantiate appropriate generator (Replicate, LiteLLM, or Mock)
             generator = GeneratorFactory.get_generator(force_mock=self.force_mock)
 
             gen_req = GenerationRequest(
@@ -61,6 +67,7 @@ class AIWorkerPool:
             )
 
             res = await generator.generate(gen_req)
+            elapsed_ms = res.duration_ms or int((time.time() - start_time) * 1000)
 
             if res.status == "success" and (res.media_urls or res.media_bytes):
                 caption = f"✨ *{job.prompt}*"
@@ -89,10 +96,8 @@ class AIWorkerPool:
                     )
 
                 # Delete temporary status message
-                try:
+                with contextlib.suppress(Exception):
                     await bot.delete_message(chat_id=job.chat_id, message_id=job.status_message_id)
-                except Exception:
-                    pass
 
                 # Record metrics and log transaction
                 record_prometheus_generation(job.bot_id, "success", job.model_name)
@@ -102,7 +107,7 @@ class AIWorkerPool:
                         user_id=job.user_id,
                         event_type="generation_success",
                         event_name=job.media_type,
-                        duration_ms=res.duration_ms,
+                        duration_ms=elapsed_ms,
                     )
                 )
                 await db.log_generation(
@@ -113,10 +118,10 @@ class AIWorkerPool:
                         prompt=job.prompt,
                         media_url=media_url_logged,
                         status="success",
-                        duration_ms=res.duration_ms,
+                        duration_ms=elapsed_ms,
                     )
                 )
-                logger.info(f"✅ Job [{job.job_id}] completed successfully in {res.duration_ms}ms")
+                logger.info(f"✅ Job [{job.job_id}] completed successfully in {elapsed_ms}ms")
 
             else:
                 error_msg = res.error_message or "Unknown AI generation error"
@@ -149,7 +154,7 @@ class AIWorkerPool:
                         user_id=job.user_id,
                         event_type="generation_failed",
                         event_name=job.media_type,
-                        duration_ms=res.duration_ms,
+                        duration_ms=elapsed_ms,
                     )
                 )
                 await db.log_generation(
@@ -159,18 +164,18 @@ class AIWorkerPool:
                         model_name=job.model_name,
                         prompt=job.prompt,
                         status="failed",
-                        duration_ms=res.duration_ms,
+                        duration_ms=elapsed_ms,
                         error_message=error_msg,
                     )
                 )
 
         except Exception as e:
             logger.error(f"Fatal error processing job {job.job_id}: {e}", exc_info=True)
-            try:
+            with contextlib.suppress(Exception):
                 await bot.edit_message_text(
                     chat_id=job.chat_id,
                     message_id=job.status_message_id,
-                    text=f"❌ *Unexpected System Error*: _{str(e)}_\n\n💰 _Credits refunded._",
+                    text=f"❌ *Unexpected System Error*: _{e!s}_\n\n💰 _Credits refunded._",
                     parse_mode="Markdown",
                 )
                 await db.add_user_credits(
@@ -180,12 +185,10 @@ class AIWorkerPool:
                     credits_to_add=job.cost,
                     telegram_charge_id="refund",
                 )
-            except Exception:
-                pass
         finally:
             await bot.session.close()
 
-    async def _worker_loop(self, worker_idx: int):
+    async def _worker_loop(self, worker_idx: int) -> None:
         logger.info(f"🚀 AI Worker #{worker_idx} started")
         while self._running:
             try:
@@ -200,17 +203,18 @@ class AIWorkerPool:
 
         logger.info(f"🛑 AI Worker #{worker_idx} stopped")
 
-    async def start(self):
+    async def start(self) -> None:
         """Starts worker tasks up to configured concurrency."""
         self._running = True
-        logger.info(f"🔥 Starting AIWorkerPool with concurrency={self.concurrency} (Mock={self.force_mock})")
+        logger.info(
+            f"🔥 Starting AIWorkerPool with concurrency={self.concurrency} (Mock={self.force_mock})"
+        )
         self._tasks = [
-            asyncio.create_task(self._worker_loop(i + 1))
-            for i in range(self.concurrency)
+            asyncio.create_task(self._worker_loop(i + 1)) for i in range(self.concurrency)
         ]
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stops worker tasks gracefully."""
         self._running = False
         for t in self._tasks:

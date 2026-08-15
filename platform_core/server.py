@@ -1,28 +1,51 @@
 import logging
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Dict
-from aiogram import Bot, Dispatcher
+
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field
+
 from platform_core.cli import get_instance_config_files
 from platform_core.config import settings
-from platform_core.metrics.prometheus import get_prometheus_metrics, update_prometheus_queue, CONTENT_TYPE_LATEST
+from platform_core.metrics.prometheus import (
+    CONTENT_TYPE_LATEST,
+    get_prometheus_metrics,
+    update_prometheus_queue,
+)
 from platform_core.modules.builder import ModularBot, ModularBotBuilder
 from platform_core.queue.broker import task_broker
 
 logger = logging.getLogger("platform_server")
 
+
+class GatewayRootResponse(BaseModel):
+    """Pydantic schema for webhook gateway root status response."""
+
+    service: str = "Telegram AI Bot Platform Webhook Gateway"
+    status: str = "online"
+    configured_bots: list[str] = Field(default_factory=list)
+
+
+class HealthCheckResponse(BaseModel):
+    """Pydantic schema for webhook gateway health check response."""
+
+    status: str = "healthy"
+    active_bot_count: int = 0
+    bot_ids: list[str] = Field(default_factory=list)
+    pending_queue_length: int = 0
+
+
 # Active Bot Instances lookup table: bot_id -> ModularBot
-BOT_INSTANCES: Dict[str, ModularBot] = {}
+BOT_INSTANCES: dict[str, ModularBot] = {}
 
 
 async def initialize_bot_instances():
     """Scans instances/ directory, builds ModularBot apps, and sets up webhooks."""
     configs = get_instance_config_files()
     if not configs:
-        logger.warning("No instance configs found in instances/. Creating default fallback instances...")
+        logger.warning(
+            "No instance configs found in instances/. Creating default fallback instances..."
+        )
         return
 
     for cfg_path in configs:
@@ -46,7 +69,9 @@ async def initialize_bot_instances():
             # Setup Telegram Webhook if strategy is 'webhook' and WEBHOOK_BASE_URL is configured
             if bot_app.strategy == "webhook":
                 if settings.WEBHOOK_BASE_URL:
-                    webhook_url = f"{settings.WEBHOOK_BASE_URL.rstrip('/')}/webhook/{bot_app.bot_id}"
+                    webhook_url = (
+                        f"{settings.WEBHOOK_BASE_URL.rstrip('/')}/webhook/{bot_app.bot_id}"
+                    )
                     secret_token = settings.WEBHOOK_SECRET_TOKEN
                     try:
                         await bot_app.bot.set_webhook(
@@ -58,9 +83,13 @@ async def initialize_bot_instances():
                     except Exception as e:
                         logger.error(f"Failed to set webhook for [{bot_app.bot_id}]: {e}")
                 else:
-                    logger.warning(f"Bot [{bot_app.bot_id}] uses webhook strategy, but WEBHOOK_BASE_URL is not set.")
+                    logger.warning(
+                        f"Bot [{bot_app.bot_id}] uses webhook strategy, but WEBHOOK_BASE_URL is not set."
+                    )
             else:
-                logger.info(f"ℹ️ Bot [{bot_app.bot_id}] is configured for POLLING strategy (skipping server webhook registration).")
+                logger.info(
+                    f"ℹ️ Bot [{bot_app.bot_id}] is configured for POLLING strategy (skipping server webhook registration)."
+                )
 
         except Exception as e:
             logger.error(f"Failed to initialize bot instance from {cfg_path}: {e}")
@@ -97,24 +126,24 @@ app = FastAPI(
 )
 
 
-@app.get("/")
-async def root():
-    return {
-        "service": "Telegram AI Bot Platform Webhook Gateway",
-        "status": "online",
-        "configured_bots": list(BOT_INSTANCES.keys()),
-    }
+@app.get("/", response_model=GatewayRootResponse)
+async def root() -> GatewayRootResponse:
+    return GatewayRootResponse(
+        service="Telegram AI Bot Platform Webhook Gateway",
+        status="online",
+        configured_bots=list(BOT_INSTANCES.keys()),
+    )
 
 
-@app.get("/health")
-async def health_check():
+@app.get("/health", response_model=HealthCheckResponse)
+async def health_check() -> HealthCheckResponse:
     q_len = await task_broker.get_queue_length()
-    return {
-        "status": "healthy",
-        "active_bot_count": len(BOT_INSTANCES),
-        "bot_ids": list(BOT_INSTANCES.keys()),
-        "pending_queue_length": q_len,
-    }
+    return HealthCheckResponse(
+        status="healthy",
+        active_bot_count=len(BOT_INSTANCES),
+        bot_ids=list(BOT_INSTANCES.keys()),
+        pending_queue_length=q_len,
+    )
 
 
 @app.get("/metrics")
@@ -146,12 +175,15 @@ async def handle_telegram_webhook(
         )
 
     # Secret token validation if configured
-    if settings.WEBHOOK_SECRET_TOKEN and x_telegram_bot_api_secret_token:
-        if x_telegram_bot_api_secret_token != settings.WEBHOOK_SECRET_TOKEN:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Telegram secret token",
-            )
+    if (
+        settings.WEBHOOK_SECRET_TOKEN
+        and x_telegram_bot_api_secret_token
+        and x_telegram_bot_api_secret_token != settings.WEBHOOK_SECRET_TOKEN
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Telegram secret token",
+        )
 
     try:
         data = await request.json()

@@ -1,13 +1,15 @@
 import json
 from pathlib import Path
+
 import pytest
+
 from platform_core.presets import (
-    load_presets_from_dict,
-    load_presets_from_yaml_string,
-    load_presets_from_yaml_file,
-    load_presets_from_json_file,
-    preset_manager,
     PromptPreset,
+    load_presets_from_dict,
+    load_presets_from_json_file,
+    load_presets_from_yaml_file,
+    load_presets_from_yaml_string,
+    preset_manager,
 )
 
 SAMPLE_YAML = """

@@ -1,15 +1,18 @@
 from datetime import datetime
 from unittest.mock import AsyncMock
+
 import pytest
-from aiogram.types import Update, Message, CallbackQuery, User as TelegramUser, Chat
-from platform_core.db import db, BotEvent, GenerationLog, StarTransaction
-from platform_core.metrics.middleware import MetricsMiddleware
+from aiogram.types import Chat, Message, Update
+from aiogram.types import User as TelegramUser
+
 from bots.admin_bot.bot import (
+    format_bots_breakdown_table,
     format_button_clicks_table,
     format_commands_table,
-    format_bots_breakdown_table,
     format_models_table,
 )
+from platform_core.db import BotEvent, GenerationLog, db
+from platform_core.metrics.middleware import MetricsMiddleware
 
 
 @pytest.mark.asyncio
@@ -62,42 +65,57 @@ async def test_metrics_recording_and_summary():
 
 
 @pytest.mark.asyncio
-async def test_metrics_middleware_unwraps_update_message():
+async def test_metrics_middleware_injects_context():
     mw = MetricsMiddleware(bot_id="image_bot_test")
     handler = AsyncMock(return_value="ok")
 
     user = TelegramUser(id=98765, is_bot=False, first_name="Alice")
     chat = Chat(id=98765, type="private")
-    msg = Message(message_id=1, date=datetime.now(), chat=chat, from_user=user, text="/start@my_bot")
+    msg = Message(
+        message_id=1, date=datetime.now(), chat=chat, from_user=user, text="/start@my_bot"
+    )
     update = Update(update_id=1001, message=msg)
 
     data = {"event_from_user": user}
     res = await mw(handler, update, data)
     assert res == "ok"
     handler.assert_called_once()
-
-    summary = await db.get_metrics_summary(bot_id="image_bot_test")
-    assert any(cmd["name"] == "/start" for cmd in summary["top_commands"])
+    assert data["bot_id"] == "image_bot_test"
+    assert data["tracker"].bot_id == "image_bot_test"
 
 
 @pytest.mark.asyncio
-async def test_metrics_middleware_unwraps_update_callback_query():
-    mw = MetricsMiddleware(bot_id="image_bot_test_cb")
-    handler = AsyncMock(return_value="ok")
+async def test_explicit_handler_event_tracking():
+    from platform_core.events import ButtonClickEvent, CommandEvent, get_tracker
 
-    user = TelegramUser(id=98765, is_bot=False, first_name="Alice")
-    cb_query = CallbackQuery(id="cb1", from_user=user, chat_instance="chat1", data="preset:cyberpunk")
-    update = Update(update_id=1002, callback_query=cb_query)
+    tracker = get_tracker("image_bot_test_cb")
+    user_id = 98765
 
-    data = {"event_from_user": user}
-    res = await mw(handler, update, data)
-    assert res == "ok"
-    handler.assert_called_once()
+    await tracker.track(
+        CommandEvent(
+            distinct_id=user_id,
+            bot_id="image_bot_test_cb",
+            command="/start",
+            duration_ms=10,
+        )
+    )
+
+    await tracker.track(
+        ButtonClickEvent(
+            distinct_id=user_id,
+            bot_id="image_bot_test_cb",
+            button_id="preset:cyberpunk",
+            duration_ms=15,
+        )
+    )
 
     buttons = await db.get_button_click_metrics(bot_id="image_bot_test_cb")
     assert len(buttons) >= 1
     assert buttons[0]["name"] == "preset:cyberpunk"
     assert buttons[0]["count"] >= 1
+
+    summary = await db.get_metrics_summary(bot_id="image_bot_test_cb")
+    assert any(cmd["name"] == "/start" for cmd in summary["top_commands"])
 
 
 def test_table_formatters():
@@ -125,8 +143,12 @@ def test_table_formatters():
     assert "20" in formatted_bots
 
     models = [
-        {"model_name": "google/gemini-2.5-flash-image", "total": 10, "success": 9, "avg_duration_ms": 1200},
+        {
+            "model_name": "google/gemini-2.5-flash-image",
+            "total": 10,
+            "success": 9,
+            "avg_duration_ms": 1200,
+        },
     ]
     formatted_models = format_models_table(models)
     assert "gemini-2.5-flash-im" in formatted_models or "gemini-2.5" in formatted_models
-

@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 
 class JSONFormatter(logging.Formatter):
@@ -13,8 +13,8 @@ class JSONFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        log_obj: Dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+        log_obj: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -22,13 +22,13 @@ class JSONFormatter(logging.Formatter):
 
         # Include bot_id if available on the log record
         if hasattr(record, "bot_id"):
-            log_obj["bot_id"] = getattr(record, "bot_id")
+            log_obj["bot_id"] = record.bot_id
 
         if hasattr(record, "event_type"):
-            log_obj["event_type"] = getattr(record, "event_type")
+            log_obj["event_type"] = record.event_type
 
         if hasattr(record, "user_id"):
-            log_obj["user_id"] = getattr(record, "user_id")
+            log_obj["user_id"] = record.user_id
 
         # Include exception traceback if record contains exc_info
         if record.exc_info:

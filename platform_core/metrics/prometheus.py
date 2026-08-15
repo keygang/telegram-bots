@@ -1,11 +1,28 @@
 import logging
-from typing import Optional
+
 import redis
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
-from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, HistogramMetricFamily, CollectorRegistry
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client.core import (
+    CollectorRegistry,
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+)
+
 from platform_core.config import settings
 
+__all__ = [
+    "CONTENT_TYPE_LATEST",
+    "get_prometheus_metrics",
+    "get_redis_client",
+    "record_prometheus_event",
+    "record_prometheus_generation",
+    "record_prometheus_stars",
+    "update_prometheus_queue",
+]
+
 logger = logging.getLogger(__name__)
+
 
 BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
@@ -40,10 +57,10 @@ TELEGRAM_QUEUE_PENDING_TASKS = Gauge(
     "Number of pending tasks waiting in the task broker queue",
 )
 
-_redis_client: Optional[redis.Redis] = None
+_redis_client: redis.Redis | None = None
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> redis.Redis | None:
     """Returns a cached synchronous Redis client for low-latency metric increments."""
     global _redis_client
     if _redis_client is not None:
@@ -63,7 +80,9 @@ def get_redis_client() -> Optional[redis.Redis]:
         return None
 
 
-def record_prometheus_event(bot_id: str, event_type: str, event_name: str, duration_ms: float) -> None:
+def record_prometheus_event(
+    bot_id: str, event_type: str, event_name: str, duration_ms: float
+) -> None:
     """Records event count and latency in Prometheus metrics and syncs to shared Redis."""
     try:
         TELEGRAM_EVENTS_TOTAL.labels(
@@ -172,7 +191,9 @@ def get_prometheus_metrics() -> bytes:
                     parts = k.split(":", 2)
                     if len(parts) == 3:
                         events_metric.add_metric(parts, float(v))
-                registry.register(type("EventsCollector", (), {"collect": lambda self: [events_metric]})())
+                registry.register(
+                    type("EventsCollector", (), {"collect": lambda self: [events_metric]})()
+                )
 
                 # Generations Total
                 gen_metric = CounterMetricFamily(
@@ -184,7 +205,9 @@ def get_prometheus_metrics() -> bytes:
                     parts = k.split(":", 2)
                     if len(parts) == 3:
                         gen_metric.add_metric(parts, float(v))
-                registry.register(type("GenCollector", (), {"collect": lambda self: [gen_metric]})())
+                registry.register(
+                    type("GenCollector", (), {"collect": lambda self: [gen_metric]})()
+                )
 
                 # Stars Total
                 stars_metric = CounterMetricFamily(
@@ -194,7 +217,9 @@ def get_prometheus_metrics() -> bytes:
                 )
                 for k, v in stars_data.items():
                     stars_metric.add_metric([k], float(v))
-                registry.register(type("StarsCollector", (), {"collect": lambda self: [stars_metric]})())
+                registry.register(
+                    type("StarsCollector", (), {"collect": lambda self: [stars_metric]})()
+                )
 
                 # Queue Pending
                 queue_metric = GaugeMetricFamily(
@@ -203,7 +228,9 @@ def get_prometheus_metrics() -> bytes:
                 )
                 queue_val = float(q_val) if q_val is not None else 0.0
                 queue_metric.add_metric([], queue_val)
-                registry.register(type("QueueCollector", (), {"collect": lambda self: [queue_metric]})())
+                registry.register(
+                    type("QueueCollector", (), {"collect": lambda self: [queue_metric]})()
+                )
 
                 # Latency Histogram
                 if durations_count:
@@ -221,13 +248,21 @@ def get_prometheus_metrics() -> bytes:
                             for b in BUCKETS:
                                 b_count = float(durations_buckets.get(f"{b_id}:{e_type}:{b}", 0))
                                 bucket_list.append((str(b), b_count))
-                            inf_count = float(durations_buckets.get(f"{b_id}:{e_type}:+Inf", total_count))
+                            inf_count = float(
+                                durations_buckets.get(f"{b_id}:{e_type}:+Inf", total_count)
+                            )
                             bucket_list.append(("+Inf", inf_count))
-                            latency_metric.add_metric([b_id, e_type], bucket_list, sum_value=sum_val)
-                    registry.register(type("LatencyCollector", (), {"collect": lambda self: [latency_metric]})())
+                            latency_metric.add_metric(
+                                [b_id, e_type], bucket_list, sum_value=sum_val
+                            )
+                    registry.register(
+                        type("LatencyCollector", (), {"collect": lambda self: [latency_metric]})()
+                    )
 
                 return generate_latest(registry)
     except Exception as e:
-        logger.warning(f"Error collecting metrics from Redis, falling back to in-memory metrics: {e}")
+        logger.warning(
+            f"Error collecting metrics from Redis, falling back to in-memory metrics: {e}"
+        )
 
     return generate_latest()

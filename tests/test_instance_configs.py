@@ -1,5 +1,5 @@
 from pathlib import Path
-import pytest
+
 from platform_core.cli import get_instance_config_files, resolve_config_path
 from platform_core.modules import ModularBotBuilder
 
@@ -39,4 +39,3 @@ def test_resolve_config_path_variants():
     assert resolve_config_path("image_bot_1") == Path("instances/image_bot_1.yaml")
     assert resolve_config_path("admin_bot") == Path("instances/admin_bot.yaml")
     assert resolve_config_path("non_existent_bot") is None
-

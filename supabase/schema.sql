@@ -75,7 +75,19 @@ CREATE TABLE IF NOT EXISTS public.star_transactions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. Bot Events Table (Metrics & Telemetry)
+-- 4. Unified PostHog-Style Analytics Events Store (Flexible JSONB Properties)
+CREATE TABLE IF NOT EXISTS public.events (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event           TEXT NOT NULL,              -- e.g. "command", "click", "generation_completed", "payment"
+    distinct_id     TEXT NOT NULL,              -- Telegram user ID or unique identifier
+    bot_id          TEXT NOT NULL DEFAULT 'default',
+    status          TEXT NOT NULL DEFAULT 'success', -- 'success', 'error', 'pending'
+    duration_ms     INT,
+    properties      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Legacy Bot Events Table (Retained for backward compatibility)
 CREATE TABLE IF NOT EXISTS public.bot_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     bot_id TEXT NOT NULL,
@@ -109,6 +121,13 @@ CREATE INDEX IF NOT EXISTS idx_bot_events_bot_id ON public.bot_events(bot_id);
 CREATE INDEX IF NOT EXISTS idx_bot_events_user_id ON public.bot_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_generation_logs_bot_id ON public.generation_logs(bot_id);
 CREATE INDEX IF NOT EXISTS idx_generation_logs_user_id ON public.generation_logs(user_id);
+
+-- PostHog-Style Events Optimized Indexes
+CREATE INDEX IF NOT EXISTS idx_events_event_timestamp ON public.events(event, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_events_distinct_id_timestamp ON public.events(distinct_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_events_bot_id_timestamp ON public.events(bot_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_events_properties_gin ON public.events USING GIN (properties jsonb_path_ops);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp_brin ON public.events USING BRIN (timestamp);
 
 -- 6. Preset Prompts Table (NoSQL Document Store using JSONB)
 CREATE TABLE IF NOT EXISTS public.preset_prompts (

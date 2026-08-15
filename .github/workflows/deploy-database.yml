@@ -15,12 +15,19 @@ on:
       action:
         description: 'Database Operation'
         required: true
-        default: 'apply-migrations'
+        default: 'apply-migrations-and-seed'
         type: choice
         options:
+          - apply-migrations-and-seed
+          - seed-presets
           - apply-migrations
           - deploy-self-hosted-stack
           - verify-schema
+      presets_file:
+        description: 'Presets File Path'
+        required: false
+        default: 'bots/image_bot/presets.yaml'
+        type: string
       deploy_strategy:
         description: 'Deployment Strategy'
         required: true
@@ -44,13 +51,18 @@ jobs:
           test -s supabase/schema.sql || (echo "❌ supabase/schema.sql is missing or empty" && exit 1)
           echo "✅ supabase/schema.sql is valid ($(wc -l < supabase/schema.sql) lines)"
 
+      - name: Validate Presets File
+        run: |
+          test -s "${{ inputs.presets_file || 'bots/image_bot/presets.yaml' }}" || (echo "❌ Presets file is missing or empty" && exit 1)
+          echo "✅ Presets file is valid"
+
       - name: Validate Docker Compose Supabase Syntax
         run: |
           docker network create telegram_net 2>/dev/null || true
           docker compose -f docker-compose.supabase.yml config
 
   deploy-or-migrate:
-    name: 🚀 Execute DB Action (${{ inputs.action || 'apply-migrations' }})
+    name: 🚀 Execute DB Action (${{ inputs.action || 'apply-migrations-and-seed' }})
     needs: validate-schema
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'production' }}
@@ -66,9 +78,10 @@ jobs:
           echo "✅ Database schema validation and dry run complete."
           echo "Target Environment: ${{ inputs.environment }}"
           echo "Database Action: ${{ inputs.action }}"
+          echo "Presets File: ${{ inputs.presets_file }}"
 
-      # --- Strategy: SSH Remote Deployment / Migration ---
-      - name: SSH Remote DB Migration / Deployment
+      # --- Strategy: SSH Remote Deployment / Migration / Seeding ---
+      - name: SSH Remote DB Migration / Seeding
         if: ${{ (inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '') && inputs.action != 'verify-schema' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -82,12 +95,14 @@ jobs:
             # Ensure shared Docker bridge network exists
             docker network create telegram_net 2>/dev/null || true
 
-            ACTION="${{ inputs.action || 'apply-migrations' }}"
+            ACTION="${{ inputs.action || 'apply-migrations-and-seed' }}"
+            PRESETS_FILE="${{ inputs.presets_file || 'bots/image_bot/presets.yaml' }}"
             echo "Executing database action: $ACTION"
 
             if [ "$ACTION" = "deploy-self-hosted-stack" ]; then
               docker compose -f docker-compose.supabase.yml up -d --remove-orphans
               docker compose -f docker-compose.supabase.yml ps
+
             elif [ "$ACTION" = "apply-migrations" ]; then
               if docker ps | grep -q "telegram_supabase_db"; then
                 echo "Applying schema to running telegram_supabase_db container..."
@@ -96,4 +111,27 @@ jobs:
               else
                 echo "⚠️ telegram_supabase_db container not running on host. If using external/cloud Supabase, apply supabase/schema.sql via Supabase Dashboard SQL Editor."
               fi
+
+            elif [ "$ACTION" = "seed-presets" ]; then
+              echo "Seeding prompt presets from file: $PRESETS_FILE..."
+              if command -v uv &> /dev/null; then
+                uv run python scripts/seed_presets.py --file "$PRESETS_FILE"
+              else
+                python3 scripts/seed_presets.py --file "$PRESETS_FILE"
+              fi
+              echo "✅ Presets successfully seeded."
+
+            elif [ "$ACTION" = "apply-migrations-and-seed" ]; then
+              if docker ps | grep -q "telegram_supabase_db"; then
+                echo "Applying schema to running telegram_supabase_db container..."
+                docker exec -i telegram_supabase_db psql -U postgres -d postgres < supabase/schema.sql
+                echo "✅ Migrations successfully applied."
+              fi
+              echo "Seeding prompt presets from file: $PRESETS_FILE..."
+              if command -v uv &> /dev/null; then
+                uv run python scripts/seed_presets.py --file "$PRESETS_FILE"
+              else
+                python3 scripts/seed_presets.py --file "$PRESETS_FILE"
+              fi
+              echo "✅ Schema applied and presets seeded successfully."
             fi

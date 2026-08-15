@@ -1,12 +1,10 @@
 from pathlib import Path
-import pytest
+
 from platform_core.modules import (
     AdminControlModule,
-    BaseBotModule,
     ImageGenModule,
     ModularBotBuilder,
     MonetizationModule,
-    PresetsModule,
 )
 from platform_core.presets import PromptPreset
 
@@ -96,4 +94,3 @@ modules:
 
     assert bot_app.bot_id == "config_test_bot"
     assert len(bot_app.modules) == 4
-

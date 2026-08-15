@@ -81,8 +81,16 @@ Pushing changes to `main` automatically triggers the bot deployment workflow (`d
 1. Navigate to GitHub -> **Actions** -> **Deploy Database & Migrations 🗄️**
 2. Click **Run workflow**:
    - **Environment**: `production`
-   - **Action**: `apply-migrations`, `deploy-self-hosted-stack`, or `verify-schema`
+   - **Action**: `apply-migrations-and-seed`, `seed-presets`, `apply-migrations`, `deploy-self-hosted-stack`, or `verify-schema`
+   - **Presets File**: `bots/image_bot/presets.yaml`
    - **Deployment Strategy**: `ssh-remote` or `dry-run-test`
+
+#### D. Seeding Prompt Presets (`seed-presets.yml`)
+1. Navigate to GitHub -> **Actions** -> **Seed Prompt Presets 🎨**
+2. Click **Run workflow**:
+   - **Environment**: `production`
+   - **Presets File**: `bots/image_bot/presets.yaml`
+   - **Execution Strategy**: `ssh-remote`, `direct-runner`, or `dry-run-test`
 
 ---
 
