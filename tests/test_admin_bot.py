@@ -164,3 +164,29 @@ async def test_admin_analytics_handler():
     assert "AI Generations" in rendered
 
 
+@pytest.mark.asyncio
+async def test_cmd_admin_stats():
+    from bots.admin_bot.bot import cmd_admin_stats
+    from platform_core.db import db, BotEvent
+
+    await db.record_event(
+        BotEvent(
+            bot_id="admin_test_bot",
+            user_id=12345,
+            event_type="command",
+            event_name="/stats",
+            duration_ms=10,
+        )
+    )
+
+    msg = AsyncMock(spec=Message)
+    msg.answer = AsyncMock()
+
+    await cmd_admin_stats(msg)
+    msg.answer.assert_called_once()
+    rendered = msg.answer.call_args[0][0]
+    assert "Platform Analytics" in rendered
+    assert "Commands Executed" in rendered
+
+
+

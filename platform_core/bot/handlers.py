@@ -238,32 +238,6 @@ async def handle_buy_menu(event: Message | CallbackQuery, user_balance: Optional
         await event.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 
-@core_router.message(Command("stats"))
-@core_router.callback_query(F.data == "show_stats")
-async def handle_stats_command(event: Message | CallbackQuery, bot_id: str = "default_bot", _: Optional[Callable[..., str]] = None):
-    if _ is None:
-        _ = lambda k, **kw: i18n.get(k, **kw)
-
-    metrics = await db.get_metrics_summary(bot_id=bot_id)
-    text = _(
-        "stats_title",
-        total_users=metrics['total_users'],
-        total_commands=metrics['total_commands'],
-        total_button_clicks=metrics['total_button_clicks'],
-        total_generations=metrics['total_generations'],
-        successful_generations=metrics['successful_generations'],
-        total_stars_earned=metrics['total_stars_earned'],
-    )
-    if metrics["top_presets"]:
-        text += _("top_presets")
-        for preset_name, count in metrics["top_presets"]:
-            text += f"• `{preset_name}`: {count}\n"
-
-    if isinstance(event, CallbackQuery):
-        await event.answer()
-        await event.message.answer(text, parse_mode="Markdown")
-    else:
-        await event.answer(text, parse_mode="Markdown")
 
 
 # --- SETTINGS & LOCALIZATION HANDLERS ---

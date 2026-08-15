@@ -22,12 +22,17 @@ def test_modules_instantiation():
 
     cmds_monetization = monetization.get_bot_commands()
     assert any(c.command == "buy" for c in cmds_monetization)
+    assert not any(c.command == "start" for c in cmds_monetization)
 
     cmds_image = image_gen.get_bot_commands()
     assert any(c.command == "presets" for c in cmds_image)
+    assert not any(c.command == "start" for c in cmds_image)
+    assert not any(c.command == "stats" for c in cmds_image)
 
     cmds_admin = admin_control.get_bot_commands()
-    assert any(c.command == "start" for c in cmds_admin)
+    assert any(c.command == "admin" for c in cmds_admin)
+    assert any(c.command == "stats" for c in cmds_admin)
+    assert not any(c.command == "start" for c in cmds_admin)
 
 
 def test_builder_fluent_assembly():

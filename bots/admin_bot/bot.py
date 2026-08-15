@@ -375,6 +375,52 @@ async def cb_instances_list(query: CallbackQuery):
     await query.answer()
 
 
+@admin_router.message(Command("stats", "analytics"))
+async def cmd_admin_stats(message: Message):
+    """Displays platform metrics and telemetry summary for admins."""
+    from platform_core.queue.broker import task_broker
+
+    metrics = await db.get_metrics_summary()
+    q_len = await task_broker.get_queue_length()
+    user_count = metrics.get("total_users", len(db._in_memory_users))
+
+    if db.client:
+        try:
+            res = db.client.table("users").select("telegram_id", count="exact").execute()
+            if res.count is not None:
+                user_count = res.count
+        except Exception:
+            pass
+
+    text = (
+        "📊 <b>Platform Analytics & System Status</b>\n"
+        "───────────────────────────────\n"
+        f"👥 <b>Total Users:</b> <code>{user_count}</code>\n"
+        f"💬 <b>Commands Executed:</b> <code>{metrics['total_commands']}</code>\n"
+        f"🖱️ <b>Button Clicks:</b> <code>{metrics['total_button_clicks']}</code>\n"
+        f"🎨 <b>AI Generations:</b> <code>{metrics['total_generations']}</code> "
+        f"(<code>{metrics['successful_generations']}</code> Succeeded)\n"
+        f"⭐️ <b>Total Stars Earned:</b> <code>{metrics['total_stars_earned']}</code> Stars (XTR)\n"
+        f"⏳ <b>Pending Queue Tasks:</b> <code>{q_len}</code>\n"
+        f"💳 <b>Monetization:</b> Active (Telegram Stars XTR)\n"
+    )
+
+    if metrics.get("top_presets"):
+        text += "\n🔥 <b>Top Used Presets:</b>\n"
+        for preset_name, count in metrics["top_presets"]:
+            text += f"• <code>{preset_name}</code>: {count} use(s)\n"
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Refresh", callback_data="admin_analytics"),
+                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
+            ]
+        ]
+    )
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
 @admin_router.callback_query(F.data == "admin_analytics")
 async def cb_analytics(query: CallbackQuery):
     """Displays platform metrics, DB telemetry summary, and queue status."""

@@ -107,11 +107,8 @@ def get_main_action_keyboard(user_credits: int, _: Optional[Callable[[str], str]
         ],
         [
             InlineKeyboardButton(text=_("btn_balance", credits=user_credits), callback_data="open_buy"),
-            InlineKeyboardButton(text=_("btn_stats"), callback_data="show_stats"),
-        ],
-        [
             InlineKeyboardButton(text=_("btn_settings"), callback_data="settings_menu"),
-        ]
+        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
