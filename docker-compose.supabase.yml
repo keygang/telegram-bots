@@ -69,6 +69,7 @@ services:
     ports:
       - "8082:3000"
     environment:
+      HOSTNAME: "0.0.0.0"
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DEFAULT_ORGANIZATION_NAME: Default Organization
