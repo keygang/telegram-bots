@@ -53,17 +53,11 @@ docker compose -f docker-compose.supabase.yml config
 
 ### 2. Committing & Pushing to GitHub
 
-Pushing changes to `main` automatically triggers the corresponding CI/CD pipeline based on modified file paths:
+Pushing changes to `main` automatically triggers the bot deployment workflow (`deploy-bots.yml`) when bot/platform code is modified. Observability and Database workflows are dispatched manually on-demand:
 
-```bash
-git add .
-git commit -m "feat: <description of changes>"
-git push origin main
-```
-
-- If you change bot code: `.github/workflows/deploy-bots.yml` triggers.
-- If you change monitoring: `.github/workflows/deploy-monitoring.yml` triggers.
-- If you change database/schema: `.github/workflows/deploy-database.yml` triggers.
+- **On commit to `main`**: `.github/workflows/deploy-bots.yml` triggers automatically for bot updates.
+- **Manual Trigger**: `.github/workflows/deploy-monitoring.yml` (Observability) via GitHub Actions `workflow_dispatch`.
+- **Manual Trigger**: `.github/workflows/deploy-database.yml` (Database & Migrations) via GitHub Actions `workflow_dispatch`.
 
 ---
 

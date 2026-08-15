@@ -1,12 +1,6 @@
 name: Deploy Observability Stack 📊
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'monitoring/**'
-      - 'docker-compose.monitoring.yml'
-      - '.github/workflows/deploy-monitoring.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -89,7 +83,7 @@ jobs:
 
       # --- Strategy: SSH Remote Deployment ---
       - name: SSH Remote Deploy Monitoring Stack
-        if: ${{ inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '' || github.event_name == 'push' }}
+        if: ${{ inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
