@@ -122,7 +122,7 @@ jobs:
             echo "Deploying bot service target: $TARGET"
 
             if [ "$TARGET" = "all" ] || [ -z "$TARGET" ]; then
-              docker compose --profile all up -d --build --remove-orphans
+              docker compose up -d --build --remove-orphans
             else
               docker compose up -d --build --no-deps $TARGET
             fi

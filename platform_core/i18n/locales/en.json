@@ -33,5 +33,7 @@
   "preset_photo_required": "📸 **Photo Upload Required**\n\nPresets are designed to transform uploaded photos. Please upload a photo to apply this preset, or cancel to use custom text prompts outside presets.",
   "cancel_action_button": "❌ Cancel Selection",
   "action_cancelled": "❌ Selection cancelled. Choose a style preset or upload a photo to start!",
-  "custom_prompt_with_photo": "✏️ **Custom Style for Photo**\n\nSend a description of how you want to transform your uploaded photo:"
+  "custom_prompt_with_photo": "✏️ **Custom Style for Photo**\n\nSend a description of how you want to transform your uploaded photo:",
+  "btn_help": "❓ Help & Info",
+  "help_text": "❓ **AI Image Generation Bot — Help & Usage Guide**\n\nWelcome to your creative AI assistant! Here is how to use the bot:\n\n✨ **How to Generate Images**:\n1. **Style Presets**: Click `/presets` or pick a preset from the menu, then send your photo to transform it.\n2. **Custom Prompts**: Click *✏️ Custom Text Prompt* to generate directly from text or transform a photo with custom instructions.\n3. **Quick Send**: Upload a photo with a caption anytime to transform it instantly.\n\n⚙️ **Available Commands**:\n• `/start` — Open the main menu & view credit balance\n• `/presets` or `/generate` — Browse style presets\n• `/models` — Switch AI generator model\n• `/buy` or `/balance` — Check credits or buy with Telegram Stars\n• `/settings` — Change bot language & preferences\n• `/help` — Display this help message\n• `/cancel` — Cancel any active prompt or selection"
 }

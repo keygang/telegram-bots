@@ -13,6 +13,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from platform_core.bot.keyboards import (
     get_cancel_keyboard,
+    get_help_keyboard,
     get_language_keyboard,
     get_models_keyboard,
     get_presets_keyboard,
@@ -305,6 +306,50 @@ async def handle_buy_menu(
         await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
     else:
         await event.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+
+# --- HELP & DOCUMENTATION HANDLERS ---
+
+
+@core_router.message(Command("help"))
+@core_router.message(Command("info"))
+@core_router.callback_query(F.data == "help_menu")
+async def handle_help_command(
+    event: Message | CallbackQuery,
+    bot_id: str = "default_bot",
+    _: Callable[..., str] | None = None,
+) -> None:
+    """Handles /help command and displays complete usage documentation and shortcuts."""
+    gettext = _resolve_gettext(_)
+
+    tracker = get_tracker(bot_id)
+    user_id = event.from_user.id
+    await tracker.track(
+        CommandEvent(
+            distinct_id=user_id,
+            bot_id=bot_id,
+            command="/help",
+        )
+    )
+
+    text = gettext("help_text")
+    kb = get_help_keyboard(_=gettext)
+
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+    await tracker.track(
+        MessageSentEvent(
+            distinct_id=user_id,
+            bot_id=bot_id,
+            message_type="help",
+            text_length=len(text),
+            has_reply_markup=True,
+        )
+    )
 
 
 # --- SETTINGS & LOCALIZATION HANDLERS ---
