@@ -6,6 +6,44 @@
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Initialize default Supabase roles if not present
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'supabase_admin') THEN
+        CREATE ROLE supabase_admin WITH SUPERUSER CREATEDB CREATEROLE LOGIN REPLICATION BYPASSRLS;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'authenticator') THEN
+        CREATE ROLE authenticator WITH NOINHERIT LOGIN;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'anon') THEN
+        CREATE ROLE anon WITH NOLOGIN;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'authenticated') THEN
+        CREATE ROLE authenticated WITH NOLOGIN;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'service_role') THEN
+        CREATE ROLE service_role WITH NOLOGIN BYPASSRLS;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+        CREATE ROLE supabase_auth_admin WITH SUPERUSER CREATEDB CREATEROLE LOGIN;
+    END IF;
+
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+        CREATE ROLE supabase_storage_admin WITH SUPERUSER CREATEDB CREATEROLE LOGIN;
+    END IF;
+
+    GRANT anon TO authenticator;
+    GRANT authenticated TO authenticator;
+    GRANT service_role TO authenticator;
+END
+$$;
+
+
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS public.users (
     telegram_id BIGINT PRIMARY KEY,
