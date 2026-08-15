@@ -134,3 +134,33 @@ def test_build_main_admin_keyboard():
             assert button.callback_data is not None
             assert len(button.callback_data) > 0
 
+
+@pytest.mark.asyncio
+async def test_admin_analytics_handler():
+    from bots.admin_bot.bot import cb_analytics
+    from platform_core.db import db, BotEvent
+
+    await db.record_event(
+        BotEvent(
+            bot_id="admin_test_bot",
+            user_id=12345,
+            event_type="command",
+            event_name="/start",
+            duration_ms=10,
+        )
+    )
+
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.message = AsyncMock()
+    cb.message.edit_text = AsyncMock()
+    cb.answer = AsyncMock()
+
+    await cb_analytics(cb)
+    cb.message.edit_text.assert_called_once()
+    rendered = cb.message.edit_text.call_args[0][0]
+    assert "Platform Analytics" in rendered
+    assert "Commands Executed" in rendered
+    assert "Button Clicks" in rendered
+    assert "AI Generations" in rendered
+
+

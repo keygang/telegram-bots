@@ -47,5 +47,6 @@ class ImageGenModule(BaseBotModule):
             BotCommand(command="start", description="🚀 Start the AI Image Bot"),
             BotCommand(command="presets", description="🎨 Browse Image Style Presets"),
             BotCommand(command="models", description="⚙️ Select AI Image Model"),
+            BotCommand(command="stats", description="📊 View Statistics & Metrics"),
             BotCommand(command="help", description="❓ Usage & Information"),
         ]

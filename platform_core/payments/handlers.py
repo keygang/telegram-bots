@@ -2,6 +2,7 @@ import logging
 from aiogram import Router, F, Bot
 from aiogram.types import Message, PreCheckoutQuery, LabeledPrice, CallbackQuery
 from platform_core.db import db, BotEvent
+from platform_core.metrics.prometheus import record_prometheus_stars
 from platform_core.payments.packages import StarPackage, get_package_by_id
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ async def process_successful_payment(message: Message, bot_id: str = "default_bo
         telegram_charge_id=payment.telegram_payment_charge_id
     )
 
+    record_prometheus_stars(bot_id=bot_id, amount=stars_paid)
     await db.record_event(
         BotEvent(
             bot_id=bot_id,
