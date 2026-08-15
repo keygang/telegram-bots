@@ -145,6 +145,22 @@ async def run_generation_job(
                 duration_ms=duration_ms,
             )
         )
+        try:
+            from platform_core.metrics.prometheus import record_prometheus_generation
+            from platform_core.db import BotEvent
+            record_prometheus_generation(bot_id, "success", model_name)
+            await db.record_event(
+                BotEvent(
+                    bot_id=bot_id,
+                    user_id=user_id,
+                    event_type="generation_success",
+                    event_name=model_name,
+                    duration_ms=duration_ms,
+                    metadata={"preset_id": preset_id},
+                )
+            )
+        except Exception as e:
+            logger.debug(f"Telemetry logging error: {e}")
     else:
         # Failure
         await status_msg.edit_text(
@@ -166,6 +182,22 @@ async def run_generation_job(
                 error_message=res.error_message,
             )
         )
+        try:
+            from platform_core.metrics.prometheus import record_prometheus_generation
+            from platform_core.db import BotEvent
+            record_prometheus_generation(bot_id, "failed", model_name)
+            await db.record_event(
+                BotEvent(
+                    bot_id=bot_id,
+                    user_id=user_id,
+                    event_type="generation_fail",
+                    event_name=model_name,
+                    duration_ms=duration_ms,
+                    metadata={"preset_id": preset_id, "error": res.error_message},
+                )
+            )
+        except Exception as e:
+            logger.debug(f"Telemetry logging error: {e}")
 
 
 @core_router.message(CommandStart())
@@ -185,7 +217,10 @@ async def handle_start_command(
     await message.answer(welcome_text, reply_markup=kb, parse_mode="Markdown")
 
 
+@core_router.message(Command("generate"))
+@core_router.message(Command("create"))
 @core_router.message(Command("presets"))
+@core_router.callback_query(F.data == "generate_menu")
 @core_router.callback_query(F.data == "presets_menu")
 @core_router.callback_query(F.data == "main_menu")
 async def handle_presets_menu(
@@ -492,13 +527,15 @@ async def handle_photo_upload(
     state_data = await state.get_data()
     selected_preset_id = state_data.get("selected_preset_id")
 
+    current_state = await state.get_state()
+
     # Flow B continuation: Preset was chosen first, now photo is uploaded
-    if selected_preset_id:
+    if selected_preset_id or current_state == GenerationStates.waiting_for_photo.state:
         file_info = await bot.get_file(photo.file_id)
         photo_bytes_io = await bot.download_file(file_info.file_path)
         photo_bytes = photo_bytes_io.read()
 
-        preset = await preset_manager.get_preset_by_id(selected_preset_id)
+        preset = await preset_manager.get_preset_by_id(selected_preset_id) if selected_preset_id else None
         if preset:
             await state.clear()
             prompt = preset.build_prompt()
@@ -515,6 +552,36 @@ async def handle_photo_upload(
                 _=_
             )
             return
+
+    # Flow C: User is in Custom Prompt mode and uploads a photo
+    if current_state == GenerationStates.entering_custom_prompt.state:
+        if message.caption and message.caption.strip():
+            file_info = await bot.get_file(photo.file_id)
+            photo_bytes_io = await bot.download_file(file_info.file_path)
+            photo_bytes = photo_bytes_io.read()
+
+            caption_prompt = message.caption.strip()
+            await state.clear()
+            await run_generation_job(
+                bot=bot,
+                chat_id=message.chat.id,
+                user_id=message.from_user.id,
+                prompt=caption_prompt,
+                reference_photo_bytes=photo_bytes,
+                media_type="image",
+                bot_id=bot_id,
+                _=_
+            )
+            return
+
+        # Store photo reference in state and ask for text prompt
+        await state.update_data(reference_file_id=photo.file_id, selected_preset_id=None)
+        await message.answer(
+            _("custom_prompt_photo_received"),
+            reply_markup=get_cancel_keyboard(_=_),
+            parse_mode="Markdown"
+        )
+        return
 
     # Direct photo upload with caption prompt
     if message.caption and message.caption.strip():

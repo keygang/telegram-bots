@@ -264,34 +264,142 @@ class SupabaseManager:
             self._in_memory_transactions if not bot_id else [t for t in self._in_memory_transactions if t.bot_id == bot_id],
         )
 
+    async def get_button_click_metrics(self, bot_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        summary = await self.get_metrics_summary(bot_id=bot_id)
+        return summary.get("top_buttons", [])[:limit]
+
+    async def get_command_metrics(self, bot_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        summary = await self.get_metrics_summary(bot_id=bot_id)
+        return summary.get("top_commands", [])[:limit]
+
+    async def get_bot_breakdown(self) -> List[Dict[str, Any]]:
+        summary = await self.get_metrics_summary()
+        return summary.get("bots_breakdown", [])
+
     def _compute_metrics_dict(
         self,
         events: List[BotEvent],
         generations: List[GenerationLog],
         transactions: List[StarTransaction]
     ) -> Dict[str, Any]:
-        unique_users = len({e.user_id for e in events} | {g.user_id for g in generations})
+        unique_users = len({e.user_id for e in events if e.user_id} | {g.user_id for g in generations if g.user_id})
         click_count = sum(1 for e in events if e.event_type == "click")
         command_count = sum(1 for e in events if e.event_type == "command")
         total_generations = len(generations)
         successful_generations = sum(1 for g in generations if g.status == "success")
+        failed_generations = sum(1 for g in generations if g.status == "failed")
         total_stars = sum(t.stars_amount for t in transactions)
 
+        # Top Presets
         preset_counts: Dict[str, int] = {}
         for g in generations:
             if g.preset_id:
                 preset_counts[g.preset_id] = preset_counts.get(g.preset_id, 0) + 1
+        top_presets = sorted(preset_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
-        top_presets = sorted(preset_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        # Top Button Clicks Breakdown
+        button_stats: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            if e.event_type == "click":
+                name = e.event_name or "unknown_button"
+                if name not in button_stats:
+                    button_stats[name] = {"count": 0, "users": set(), "durations": []}
+                button_stats[name]["count"] += 1
+                if e.user_id:
+                    button_stats[name]["users"].add(e.user_id)
+                if e.duration_ms is not None:
+                    button_stats[name]["durations"].append(e.duration_ms)
+
+        top_buttons = [
+            {
+                "name": name,
+                "count": data["count"],
+                "unique_users": len(data["users"]),
+                "avg_duration_ms": int(sum(data["durations"]) / len(data["durations"])) if data["durations"] else 0,
+            }
+            for name, data in sorted(button_stats.items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+
+        # Top Commands Breakdown
+        cmd_stats: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            if e.event_type == "command":
+                name = e.event_name or "unknown_command"
+                if name not in cmd_stats:
+                    cmd_stats[name] = {"count": 0, "users": set(), "durations": []}
+                cmd_stats[name]["count"] += 1
+                if e.user_id:
+                    cmd_stats[name]["users"].add(e.user_id)
+                if e.duration_ms is not None:
+                    cmd_stats[name]["durations"].append(e.duration_ms)
+
+        top_commands = [
+            {
+                "name": name,
+                "count": data["count"],
+                "unique_users": len(data["users"]),
+                "avg_duration_ms": int(sum(data["durations"]) / len(data["durations"])) if data["durations"] else 0,
+            }
+            for name, data in sorted(cmd_stats.items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+
+        # Per-Bot Breakdown
+        all_bot_ids = {e.bot_id for e in events} | {g.bot_id for g in generations} | {t.bot_id for t in transactions}
+        bots_breakdown = []
+        for b_id in sorted(all_bot_ids):
+            b_events = [e for e in events if e.bot_id == b_id]
+            b_gens = [g for g in generations if g.bot_id == b_id]
+            b_trans = [t for t in transactions if t.bot_id == b_id]
+            b_users = len({e.user_id for e in b_events if e.user_id} | {g.user_id for g in b_gens if g.user_id})
+            bots_breakdown.append({
+                "bot_id": b_id,
+                "users": b_users,
+                "clicks": sum(1 for e in b_events if e.event_type == "click"),
+                "commands": sum(1 for e in b_events if e.event_type == "command"),
+                "generations": len(b_gens),
+                "stars": sum(t.stars_amount for t in b_trans),
+                "events": len(b_events),
+            })
+
+        # Models Breakdown
+        model_stats: Dict[str, Dict[str, Any]] = {}
+        for g in generations:
+            m_name = g.model_name or "default"
+            if m_name not in model_stats:
+                model_stats[m_name] = {"total": 0, "success": 0, "failed": 0, "durations": []}
+            model_stats[m_name]["total"] += 1
+            if g.status == "success":
+                model_stats[m_name]["success"] += 1
+            elif g.status == "failed":
+                model_stats[m_name]["failed"] += 1
+            if g.duration_ms:
+                model_stats[m_name]["durations"].append(g.duration_ms)
+
+        models_breakdown = [
+            {
+                "model_name": m_name,
+                "total": data["total"],
+                "success": data["success"],
+                "failed": data["failed"],
+                "avg_duration_ms": int(sum(data["durations"]) / len(data["durations"])) if data["durations"] else 0,
+            }
+            for m_name, data in sorted(model_stats.items(), key=lambda x: x[1]["total"], reverse=True)
+        ]
 
         return {
             "total_users": unique_users,
+            "total_events": len(events),
             "total_commands": command_count,
             "total_button_clicks": click_count,
             "total_generations": total_generations,
             "successful_generations": successful_generations,
+            "failed_generations": failed_generations,
             "total_stars_earned": total_stars,
             "top_presets": top_presets,
+            "top_buttons": top_buttons,
+            "top_commands": top_commands,
+            "bots_breakdown": bots_breakdown,
+            "models_breakdown": models_breakdown,
         }
 
 

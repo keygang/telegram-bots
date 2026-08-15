@@ -189,4 +189,43 @@ async def test_cmd_admin_stats():
     assert "Commands Executed" in rendered
 
 
+@pytest.mark.asyncio
+async def test_admin_analytics_subviews():
+    from bots.admin_bot.bot import (
+        cb_analytics_buttons,
+        cb_analytics_commands,
+        cb_analytics_bots,
+        cb_analytics_generations,
+    )
+    from platform_core.db import db, BotEvent, GenerationLog
+
+    bot_id = "test_bot_subviews"
+    await db.record_event(BotEvent(bot_id=bot_id, user_id=1, event_type="click", event_name="btn_ok", duration_ms=5))
+    await db.record_event(BotEvent(bot_id=bot_id, user_id=1, event_type="command", event_name="/help", duration_ms=8))
+    await db.log_generation(GenerationLog(bot_id=bot_id, user_id=1, model_name="gemini", prompt="test", status="success"))
+
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.message = AsyncMock()
+    cb.message.edit_text = AsyncMock()
+    cb.answer = AsyncMock()
+
+    # Buttons table subview
+    await cb_analytics_buttons(cb)
+    cb.message.edit_text.assert_called()
+    assert "Button Click Telemetry" in cb.message.edit_text.call_args[0][0]
+
+    # Commands table subview
+    await cb_analytics_commands(cb)
+    assert "Command Execution Telemetry" in cb.message.edit_text.call_args[0][0]
+
+    # Bots table subview
+    await cb_analytics_bots(cb)
+    assert "Multi-Bot Platform Telemetry" in cb.message.edit_text.call_args[0][0]
+
+    # Generations table subview
+    await cb_analytics_generations(cb)
+    assert "AI Generations & Models" in cb.message.edit_text.call_args[0][0]
+
+
+
 

@@ -9,8 +9,8 @@ from platform_core.db import db, UserProfile
 def test_i18n_manager_translations_loaded():
     assert "en" in i18n.translations
     assert "ru" in i18n.translations
-    assert "es" in i18n.translations
-    assert "de" in i18n.translations
+    assert "es" not in i18n.translations
+    assert "de" not in i18n.translations
 
     # English translation test
     welcome_en = i18n.get("welcome_text", lang="en", credits=5)
@@ -25,8 +25,9 @@ def test_i18n_manager_translations_loaded():
 
 def test_language_normalization():
     assert i18n.normalize_language_code("ru-RU") == "ru"
-    assert i18n.normalize_language_code("es-MX") == "es"
-    assert i18n.normalize_language_code("de_DE") == "de"
+    assert i18n.normalize_language_code("en-US") == "en"
+    assert i18n.normalize_language_code("es-MX") == "en"  # unsupported falls back to en
+    assert i18n.normalize_language_code("de_DE") == "en"  # unsupported falls back to en
     assert i18n.normalize_language_code("fr-FR") == "en"  # unsupported falls back to en
     assert i18n.normalize_language_code(None) == "en"
 
@@ -60,12 +61,12 @@ async def test_i18n_middleware_telegram_lang():
 async def test_i18n_middleware_user_setting_override():
     middleware = I18nMiddleware()
 
-    # User profile with explicit German setting
+    # User profile with explicit Russian setting
     user_id = 7771234
-    profile = UserProfile(telegram_id=user_id, language_code="de")
+    profile = UserProfile(telegram_id=user_id, language_code="ru")
 
-    # Telegram client says language is Russian
-    user = User(id=user_id, is_bot=False, first_name="Hans", language_code="ru")
+    # Telegram client says language is English
+    user = User(id=user_id, is_bot=False, first_name="Hans", language_code="en")
     event = MagicMock(spec=Message)
     event.from_user = user
 
@@ -75,9 +76,9 @@ async def test_i18n_middleware_user_setting_override():
     async def dummy_handler(evt, ctx):
         nonlocal dummy_handler_called
         dummy_handler_called = True
-        # Explicit saved user_profile setting (de) MUST take precedence over Telegram language (ru)
-        assert ctx["user_lang"] == "de"
-        assert "Willkommen" in ctx["_"]("welcome_text", credits=3)
+        # Explicit saved user_profile setting (ru) MUST take precedence over Telegram language (en)
+        assert ctx["user_lang"] == "ru"
+        assert "Добро пожаловать" in ctx["_"]("welcome_text", credits=3)
 
     await middleware(dummy_handler, event, data)
     assert dummy_handler_called is True
@@ -89,9 +90,9 @@ async def test_db_update_user_language():
     profile = await db.sync_user(telegram_id=user_id, language_code="en")
     assert profile.language_code == "en"
 
-    updated = await db.update_user_language(telegram_id=user_id, language_code="es")
+    updated = await db.update_user_language(telegram_id=user_id, language_code="ru")
     assert updated is not None
-    assert updated.language_code == "es"
+    assert updated.language_code == "ru"
 
     refetched = await db.sync_user(telegram_id=user_id)
-    assert refetched.language_code == "es"
+    assert refetched.language_code == "ru"

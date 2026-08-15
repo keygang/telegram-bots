@@ -10,6 +10,7 @@ from platform_core.bot.handlers import (
     handle_preset_selection,
     handle_custom_text_prompt,
     handle_cancel_action,
+    handle_presets_menu,
 )
 from platform_core.bot.states import GenerationStates
 from platform_core.presets import PromptPreset, preset_manager
@@ -334,5 +335,191 @@ async def test_preset_rejects_text_prompt_and_requires_photo(mock_bot, memory_fs
 
     # State must remain waiting_for_photo so the user can upload a photo
     assert await memory_fsm_context.get_state() == GenerationStates.waiting_for_photo.state
+
+
+@pytest.mark.asyncio
+async def test_custom_prompt_flow_text_only(mock_bot, memory_fsm_context):
+    """
+    User clicks Custom Prompt -> enters entering_custom_prompt -> sends text prompt -> generates text-to-image.
+    """
+    user = User(id=2001, is_bot=False, first_name="Alice")
+    chat = Chat(id=1001, type="private")
+
+    # 1. User clicks Custom Prompt
+    cb_msg = MagicMock(spec=Message)
+    cb_msg.chat = chat
+    cb_msg.message_id = 50
+    cb_msg.answer = AsyncMock()
+
+    callback = MagicMock(spec=CallbackQuery)
+    callback.data = "preset:custom"
+    callback.from_user = user
+    callback.message = cb_msg
+    callback.answer = AsyncMock()
+
+    await handle_preset_selection(
+        callback=callback,
+        state=memory_fsm_context,
+        bot=mock_bot,
+        bot_id="image_bot",
+    )
+
+    assert await memory_fsm_context.get_state() == GenerationStates.entering_custom_prompt.state
+    assert cb_msg.answer.called
+
+    # 2. User sends text prompt
+    text_msg = MagicMock(spec=Message)
+    text_msg.message_id = 51
+    text_msg.chat = chat
+    text_msg.from_user = user
+    text_msg.text = "Mystical enchanted forest with glowing mushrooms"
+    text_msg.answer = AsyncMock()
+
+    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+        await handle_custom_text_prompt(
+            message=text_msg,
+            state=memory_fsm_context,
+            bot=mock_bot,
+            bot_id="image_bot",
+        )
+
+        assert mock_run_gen.called
+        call_kwargs = mock_run_gen.call_args.kwargs
+        assert call_kwargs["reference_photo_bytes"] is None
+        assert call_kwargs["prompt"] == "Mystical enchanted forest with glowing mushrooms"
+
+    assert await memory_fsm_context.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_custom_prompt_flow_with_photo_upload_then_text(mock_bot, memory_fsm_context):
+    """
+    User clicks Custom Prompt -> uploads photo without caption -> sends text prompt -> generates photo-to-photo.
+    """
+    user = User(id=2001, is_bot=False, first_name="Alice")
+    chat = Chat(id=1001, type="private")
+
+    # 1. User clicks Custom Prompt
+    await memory_fsm_context.set_state(GenerationStates.entering_custom_prompt)
+
+    # 2. User uploads photo without caption
+    photo_sizes = [
+        PhotoSize(file_id="custom_photo_999", file_unique_id="u99", width=800, height=800)
+    ]
+    photo_msg = MagicMock(spec=Message)
+    photo_msg.message_id = 60
+    photo_msg.chat = chat
+    photo_msg.from_user = user
+    photo_msg.photo = photo_sizes
+    photo_msg.caption = None
+    photo_msg.answer = AsyncMock()
+
+    await handle_photo_upload(
+        message=photo_msg,
+        state=memory_fsm_context,
+        bot=mock_bot,
+        bot_id="image_bot",
+    )
+
+    state_data = await memory_fsm_context.get_data()
+    assert state_data.get("reference_file_id") == "custom_photo_999"
+    assert photo_msg.answer.called
+
+    # 3. User sends custom text prompt
+    text_msg = MagicMock(spec=Message)
+    text_msg.message_id = 61
+    text_msg.chat = chat
+    text_msg.from_user = user
+    text_msg.text = "Add steampunk goggles and mechanical wings"
+    text_msg.answer = AsyncMock()
+
+    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+        await handle_custom_text_prompt(
+            message=text_msg,
+            state=memory_fsm_context,
+            bot=mock_bot,
+            bot_id="image_bot",
+        )
+
+        assert mock_run_gen.called
+        call_kwargs = mock_run_gen.call_args.kwargs
+        assert call_kwargs["reference_photo_bytes"] == b"FAKE_PHOTO_BYTES_DATA_12345"
+        assert call_kwargs["prompt"] == "Add steampunk goggles and mechanical wings"
+
+    assert await memory_fsm_context.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_custom_prompt_flow_with_captioned_photo_upload(mock_bot, memory_fsm_context):
+    """
+    User clicks Custom Prompt -> uploads photo WITH caption -> immediately generates photo-to-photo.
+    """
+    user = User(id=2001, is_bot=False, first_name="Alice")
+    chat = Chat(id=1001, type="private")
+
+    # 1. In entering_custom_prompt state
+    await memory_fsm_context.set_state(GenerationStates.entering_custom_prompt)
+
+    # 2. Uploads photo with caption
+    photo_sizes = [
+        PhotoSize(file_id="photo_123", file_unique_id="u2", width=800, height=800)
+    ]
+    photo_msg = MagicMock(spec=Message)
+    photo_msg.message_id = 70
+    photo_msg.chat = chat
+    photo_msg.from_user = user
+    photo_msg.photo = photo_sizes
+    photo_msg.caption = "Transform into an oil painting"
+    photo_msg.answer = AsyncMock()
+
+    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+        await handle_photo_upload(
+            message=photo_msg,
+            state=memory_fsm_context,
+            bot=mock_bot,
+            bot_id="image_bot",
+        )
+
+        assert mock_run_gen.called
+        call_kwargs = mock_run_gen.call_args.kwargs
+        assert call_kwargs["reference_photo_bytes"] == b"FAKE_PHOTO_BYTES_DATA_12345"
+        assert call_kwargs["prompt"] == "Transform into an oil painting"
+
+    assert await memory_fsm_context.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_generate_menu_command_and_callback(mock_bot):
+    """
+    Test /generate command and callback query renders presets menu.
+    """
+    user = User(id=2001, is_bot=False, first_name="Alice")
+    chat = Chat(id=1001, type="private")
+
+    # Test Message command
+    msg = MagicMock(spec=Message)
+    msg.chat = chat
+    msg.from_user = user
+    msg.answer = AsyncMock()
+
+    await handle_presets_menu(event=msg, bot_id="image_bot")
+    assert msg.answer.called
+
+    # Test CallbackQuery
+    cb_msg = MagicMock(spec=Message)
+    cb_msg.chat = chat
+    cb_msg.edit_text = AsyncMock()
+
+    callback = MagicMock(spec=CallbackQuery)
+    callback.data = "generate_menu"
+    callback.from_user = user
+    callback.message = cb_msg
+    callback.answer = AsyncMock()
+
+    await handle_presets_menu(event=callback, bot_id="image_bot")
+    assert callback.answer.called
+    assert cb_msg.edit_text.called
+
+
 
 

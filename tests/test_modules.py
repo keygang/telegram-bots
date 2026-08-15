@@ -25,7 +25,7 @@ def test_modules_instantiation():
     assert not any(c.command == "start" for c in cmds_monetization)
 
     cmds_image = image_gen.get_bot_commands()
-    assert any(c.command == "presets" for c in cmds_image)
+    assert any(c.command == "generate" for c in cmds_image)
     assert not any(c.command == "start" for c in cmds_image)
     assert not any(c.command == "stats" for c in cmds_image)
 

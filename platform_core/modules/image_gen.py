@@ -44,7 +44,8 @@ class ImageGenModule(BaseBotModule):
 
     def get_bot_commands(self) -> List[BotCommand]:
         return [
-            BotCommand(command="presets", description="🎨 Browse Image Style Presets"),
+            BotCommand(command="generate", description="🎨 Generate & Create Artwork"),
             BotCommand(command="models", description="⚙️ Select AI Image Model"),
             BotCommand(command="help", description="❓ Usage & Information"),
         ]
+

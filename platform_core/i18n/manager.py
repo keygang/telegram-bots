@@ -8,8 +8,6 @@ logger = logging.getLogger(__name__)
 SUPPORTED_LANGUAGES = {
     "en": "English 🇬🇧",
     "ru": "Русский 🇷🇺",
-    "es": "Español 🇪🇸",
-    "de": "Deutsch 🇩🇪",
 }
 
 DEFAULT_LANGUAGE = "en"

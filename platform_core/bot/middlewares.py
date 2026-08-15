@@ -1,11 +1,20 @@
 import logging
 from typing import Any, Callable, Dict, Awaitable, Optional
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message, CallbackQuery
+from aiogram.types import TelegramObject, Update, Message, CallbackQuery, User
 from platform_core.db import db, UserProfile
 from platform_core.i18n import i18n
 
 logger = logging.getLogger(__name__)
+
+
+def _get_user_from_event(event: TelegramObject, data: Dict[str, Any]) -> Optional[User]:
+    """Helper to safely extract the Telegram User across Update and specific event types."""
+    user = data.get("event_from_user")
+    if user:
+        return user
+    inner = event.event if isinstance(event, Update) else event
+    return getattr(inner, "from_user", None)
 
 
 class UserSyncMiddleware(BaseMiddleware):
@@ -17,11 +26,7 @@ class UserSyncMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        user = None
-        if isinstance(event, Message) and event.from_user:
-            user = event.from_user
-        elif isinstance(event, CallbackQuery) and event.from_user:
-            user = event.from_user
+        user = _get_user_from_event(event, data)
 
         if user:
             user_profile = await db.sync_user(
@@ -50,10 +55,7 @@ class I18nMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        user = None
-        if isinstance(event, (Message, CallbackQuery)) and event.from_user:
-            user = event.from_user
-
+        user = _get_user_from_event(event, data)
         user_profile: Optional[UserProfile] = data.get("user_profile")
         raw_lang = None
 
@@ -83,12 +85,11 @@ class CreditCheckMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        user = None
-        if isinstance(event, (Message, CallbackQuery)) and event.from_user:
-            user = event.from_user
+        user = _get_user_from_event(event, data)
 
         if user:
             balance = await db.get_user_balance(user.id)
             data["user_balance"] = balance
 
         return await handler(event, data)
+

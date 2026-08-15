@@ -375,9 +375,111 @@ async def cb_instances_list(query: CallbackQuery):
     await query.answer()
 
 
-@admin_router.message(Command("stats", "analytics"))
-async def cmd_admin_stats(message: Message):
-    """Displays platform metrics and telemetry summary for admins."""
+def format_button_clicks_table(buttons: List[Dict[str, Any]]) -> str:
+    """Formats ranked button click hits into an aligned monospaced table."""
+    if not buttons:
+        return "<i>No button clicks recorded yet.</i>"
+
+    lines = [" #  Action                   Clicks  Users", "──────────────────────────────────────────"]
+    for idx, btn in enumerate(buttons[:15], start=1):
+        name = btn.get("name", "unknown")
+        if len(name) > 22:
+            name = name[:20] + ".."
+        clicks = str(btn.get("count", 0))
+        users = str(btn.get("unique_users", 0))
+        lines.append(f"{idx:<2}  {name:<24} {clicks:>6} {users:>6}")
+    return "<pre>" + "\n".join(lines) + "</pre>"
+
+
+def format_commands_table(commands: List[Dict[str, Any]]) -> str:
+    """Formats ranked bot commands into an aligned monospaced table."""
+    if not commands:
+        return "<i>No commands recorded yet.</i>"
+
+    lines = [" #  Command                  Runs   Users", "──────────────────────────────────────────"]
+    for idx, cmd in enumerate(commands[:15], start=1):
+        name = cmd.get("name", "unknown")
+        if len(name) > 22:
+            name = name[:20] + ".."
+        runs = str(cmd.get("count", 0))
+        users = str(cmd.get("unique_users", 0))
+        lines.append(f"{idx:<2}  {name:<24} {runs:>5} {users:>6}")
+    return "<pre>" + "\n".join(lines) + "</pre>"
+
+
+def format_bots_breakdown_table(bots: List[Dict[str, Any]]) -> str:
+    """Formats cross-bot telemetry into an aligned monospaced table."""
+    if not bots:
+        return "<i>No bot activity recorded yet.</i>"
+
+    lines = ["Bot ID         Users  Clicks   Cmds   Gens", "──────────────────────────────────────────"]
+    for b in bots:
+        b_id = b.get("bot_id", "unknown")
+        if len(b_id) > 13:
+            b_id = b_id[:11] + ".."
+        users = str(b.get("users", 0))
+        clicks = str(b.get("clicks", 0))
+        cmds = str(b.get("commands", 0))
+        gens = str(b.get("generations", 0))
+        lines.append(f"{b_id:<13}  {users:>5}  {clicks:>6}  {cmds:>5}  {gens:>5}")
+    return "<pre>" + "\n".join(lines) + "</pre>"
+
+
+def format_models_table(models: List[Dict[str, Any]]) -> str:
+    """Formats AI models usage and performance into an aligned monospaced table."""
+    if not models:
+        return "<i>No generation data recorded yet.</i>"
+
+    lines = ["Model / Engine       Total   Succ   Avg(s)", "──────────────────────────────────────────"]
+    for m in models:
+        m_name = m.get("model_name", "default")
+        short_name = m_name.replace("google/", "").replace("black-forest-labs/", "")
+        if len(short_name) > 19:
+            short_name = short_name[:17] + ".."
+        total = str(m.get("total", 0))
+        succ = str(m.get("success", 0))
+        avg_s = f"{m.get('avg_duration_ms', 0) / 1000.0:.1f}s"
+        lines.append(f"{short_name:<19}  {total:>5}  {succ:>5}  {avg_s:>7}")
+    return "<pre>" + "\n".join(lines) + "</pre>"
+
+
+def build_analytics_keyboard() -> InlineKeyboardMarkup:
+    """Builds navigation keyboard for analytics overview."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🖱️ Button Clicks", callback_data="admin_analytics_buttons"),
+                InlineKeyboardButton(text="💬 Commands", callback_data="admin_analytics_commands"),
+            ],
+            [
+                InlineKeyboardButton(text="🤖 Multi-Bot Stats", callback_data="admin_analytics_bots"),
+                InlineKeyboardButton(text="🎨 Generations", callback_data="admin_analytics_generations"),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 Refresh", callback_data="admin_analytics"),
+                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
+            ],
+        ]
+    )
+
+
+def build_analytics_subview_keyboard(refresh_callback: str) -> InlineKeyboardMarkup:
+    """Builds navigation keyboard for analytics subviews."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Refresh", callback_data=refresh_callback),
+                InlineKeyboardButton(text="📊 Overview", callback_data="admin_analytics"),
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
+            ],
+        ]
+    )
+
+
+async def render_analytics_overview_text() -> str:
+    """Generates the primary analytics summary text."""
     from platform_core.queue.broker import task_broker
 
     metrics = await db.get_metrics_summary()
@@ -396,6 +498,7 @@ async def cmd_admin_stats(message: Message):
         "📊 <b>Platform Analytics & System Status</b>\n"
         "───────────────────────────────\n"
         f"👥 <b>Total Users:</b> <code>{user_count}</code>\n"
+        f"⚡ <b>Total Events / Hits:</b> <code>{metrics.get('total_events', 0)}</code>\n"
         f"💬 <b>Commands Executed:</b> <code>{metrics['total_commands']}</code>\n"
         f"🖱️ <b>Button Clicks:</b> <code>{metrics['total_button_clicks']}</code>\n"
         f"🎨 <b>AI Generations:</b> <code>{metrics['total_generations']}</code> "
@@ -406,75 +509,144 @@ async def cmd_admin_stats(message: Message):
     )
 
     if metrics.get("top_presets"):
-        text += "\n🔥 <b>Top Used Presets:</b>\n"
-        for preset_name, count in metrics["top_presets"]:
-            text += f"• <code>{preset_name}</code>: {count} use(s)\n"
+        text += "\n🔥 <b>Top Presets:</b>\n"
+        for preset_name, count in metrics["top_presets"][:5]:
+            text += f"• <code>{preset_name}</code>: {count} gen(s)\n"
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔄 Refresh", callback_data="admin_analytics"),
-                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
-            ]
-        ]
-    )
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    text += "\n<i>Tap below to view detailed breakdown tables:</i>"
+    return text
+
+
+@admin_router.message(Command("stats", "analytics"))
+async def cmd_admin_stats(message: Message):
+    """Displays platform metrics and telemetry summary for admins."""
+    text = await render_analytics_overview_text()
+    await message.answer(text, reply_markup=build_analytics_keyboard(), parse_mode="HTML")
 
 
 @admin_router.callback_query(F.data == "admin_analytics")
 async def cb_analytics(query: CallbackQuery):
     """Displays platform metrics, DB telemetry summary, and queue status."""
-    from platform_core.queue.broker import task_broker
+    text = await render_analytics_overview_text()
+    await query.message.edit_text(text, reply_markup=build_analytics_keyboard(), parse_mode="HTML")
+    await query.answer()
 
-    metrics = await db.get_metrics_summary()
-    q_len = await task_broker.get_queue_length()
-    user_count = metrics.get("total_users", len(db._in_memory_users))
 
-    if db.client:
-        try:
-            res = db.client.table("users").select("telegram_id", count="exact").execute()
-            if res.count is not None:
-                user_count = res.count
-        except Exception:
-            pass
+@admin_router.callback_query(F.data == "admin_analytics_buttons")
+async def cb_analytics_buttons(query: CallbackQuery):
+    """Renders tabular button click analytics."""
+    summary = await db.get_metrics_summary()
+    top_buttons = summary.get("top_buttons", [])
+    total_clicks = summary.get("total_button_clicks", 0)
 
+    table_text = format_button_clicks_table(top_buttons)
     text = (
-        "📊 <b>Platform Analytics & System Status</b>\n"
+        "🖱️ <b>Button Click Telemetry Table</b>\n"
         "───────────────────────────────\n"
-        f"👥 <b>Total Users:</b> <code>{user_count}</code>\n"
-        f"💬 <b>Commands Executed:</b> <code>{metrics['total_commands']}</code>\n"
-        f"🖱️ <b>Button Clicks:</b> <code>{metrics['total_button_clicks']}</code>\n"
-        f"🎨 <b>AI Generations:</b> <code>{metrics['total_generations']}</code> "
-        f"(<code>{metrics['successful_generations']}</code> Succeeded)\n"
-        f"⭐️ <b>Total Stars Earned:</b> <code>{metrics['total_stars_earned']}</code> Stars (XTR)\n"
-        f"⏳ <b>Pending Queue Tasks:</b> <code>{q_len}</code>\n"
-        f"💳 <b>Monetization:</b> Active (Telegram Stars XTR)\n"
+        f"{table_text}\n\n"
+        f"📈 <b>Total Clicks:</b> <code>{total_clicks}</code> | "
+        f"🎯 <b>Unique Buttons:</b> <code>{len(top_buttons)}</code>"
+    )
+    await query.message.edit_text(
+        text,
+        reply_markup=build_analytics_subview_keyboard("admin_analytics_buttons"),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
+@admin_router.callback_query(F.data == "admin_analytics_commands")
+async def cb_analytics_commands(query: CallbackQuery):
+    """Renders tabular bot command analytics."""
+    summary = await db.get_metrics_summary()
+    top_commands = summary.get("top_commands", [])
+    total_commands = summary.get("total_commands", 0)
+
+    table_text = format_commands_table(top_commands)
+    text = (
+        "💬 <b>Command Execution Telemetry Table</b>\n"
+        "───────────────────────────────\n"
+        f"{table_text}\n\n"
+        f"📈 <b>Total Commands:</b> <code>{total_commands}</code> | "
+        f"🎯 <b>Unique Commands:</b> <code>{len(top_commands)}</code>"
+    )
+    await query.message.edit_text(
+        text,
+        reply_markup=build_analytics_subview_keyboard("admin_analytics_commands"),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
+@admin_router.callback_query(F.data == "admin_analytics_bots")
+async def cb_analytics_bots(query: CallbackQuery):
+    """Renders multi-bot breakdown table."""
+    summary = await db.get_metrics_summary()
+    bots_breakdown = summary.get("bots_breakdown", [])
+
+    table_text = format_bots_breakdown_table(bots_breakdown)
+    text = (
+        "🤖 <b>Multi-Bot Platform Telemetry Table</b>\n"
+        "───────────────────────────────\n"
+        f"{table_text}\n\n"
+        f"🤖 <b>Active Bots Tracked:</b> <code>{len(bots_breakdown)}</code>"
+    )
+    await query.message.edit_text(
+        text,
+        reply_markup=build_analytics_subview_keyboard("admin_analytics_bots"),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
+@admin_router.callback_query(F.data == "admin_analytics_generations")
+async def cb_analytics_generations(query: CallbackQuery):
+    """Renders AI generation and model telemetry table."""
+    summary = await db.get_metrics_summary()
+    models_breakdown = summary.get("models_breakdown", [])
+    top_presets = summary.get("top_presets", [])
+    total_gens = summary.get("total_generations", 0)
+    succ_gens = summary.get("successful_generations", 0)
+    succ_rate = (succ_gens / total_gens * 100) if total_gens > 0 else 100.0
+
+    table_text = format_models_table(models_breakdown)
+    text = (
+        "🎨 <b>AI Generations & Models Telemetry</b>\n"
+        "───────────────────────────────\n"
+        f"{table_text}\n\n"
+        f"📈 <b>Total Generations:</b> <code>{total_gens}</code>\n"
+        f"✅ <b>Success Rate:</b> <code>{succ_rate:.1f}%</code> (<code>{succ_gens}</code> OK)\n"
     )
 
-    if metrics.get("top_presets"):
-        text += "\n🔥 <b>Top Used Presets:</b>\n"
-        for preset_name, count in metrics["top_presets"]:
-            text += f"• <code>{preset_name}</code>: {count} use(s)\n"
+    if top_presets:
+        text += "\n🔥 <b>Preset Popularity:</b>\n"
+        for name, count in top_presets[:5]:
+            text += f"• <code>{name}</code>: {count} gen(s)\n"
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔄 Refresh", callback_data="admin_analytics"),
-                InlineKeyboardButton(text="⬅️ Main Menu", callback_data="admin_menu"),
-            ]
-        ]
+    await query.message.edit_text(
+        text,
+        reply_markup=build_analytics_subview_keyboard("admin_analytics_generations"),
+        parse_mode="HTML",
     )
-    await query.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await query.answer()
 
 
 async def run_admin_bot(bot_token: Optional[str] = None):
     """Launches the Admin Telegram Bot polling loop."""
+    from platform_core.metrics import MetricsMiddleware
+    from platform_core.bot.middlewares import UserSyncMiddleware, I18nMiddleware
+
     token = bot_token or settings.ADMIN_BOT_TOKEN
     logger.info("👑 Starting Admin Telegram Bot...")
 
     bot = Bot(token=token)
     dp = Dispatcher(storage=get_fsm_storage(key_prefix="fsm:admin_bot"))
+
+    # Register core middlewares
+    dp.update.outer_middleware(UserSyncMiddleware())
+    dp.update.outer_middleware(I18nMiddleware())
+    dp.update.outer_middleware(MetricsMiddleware(bot_id="admin_bot"))
+
     dp.include_router(admin_router)
 
     await dp.start_polling(bot)
