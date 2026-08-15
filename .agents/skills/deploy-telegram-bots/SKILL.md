@@ -31,6 +31,8 @@ The platform supports two deployment methods:
      - `loki`: Log aggregation server (Port 3100).
      - `promtail`: Tails Docker container JSON logs and ships to Loki.
      - `grafana`: Grafana dashboard UI (Port 3000).
+     - `supabase-kong` (Self-Hosted): PostgREST & Auth Gateway (Port 8001).
+     - `supabase-studio` (Self-Hosted): Database Management UI (Port 8082).
 
 ---
 
@@ -50,7 +52,7 @@ uv run python -m platform_core.cli list
 
 ### 2. Committing & Pushing to GitHub
 
-Pushing changes to `main` automatically triggers the CI pipeline (`.github/workflows/ci.yml`):
+Pushing changes to `main` automatically triggers the CI pipeline (`.github/workflows/ci.yml`) and Deployment workflow (`.github/workflows/deploy.yml`):
 
 ```bash
 git add .
@@ -67,7 +69,7 @@ To deploy to production using GitHub Actions:
 3. Click **Run workflow**:
    - **Environment**: `production` (or `staging` / `dev`)
    - **Bot Instance**: `all` (or specific instance e.g. `image_bot_1`)
-   - **Deployment Strategy**: `ssh-remote` (or `docker-compose`)
+   - **Deployment Strategy**: `ssh-remote`, `docker-compose`, or `dry-run-test`
 
 ---
 
@@ -80,6 +82,7 @@ Once deployed, the Grafana observability dashboard and live log stream can be ac
 - **Dashboard Path**: Dashboards -> **Telegram Bots Platform Dashboard**
 - **Prometheus Direct Metrics**: `http://localhost:8000/metrics`
 - **Loki Endpoint**: `http://localhost:3100`
+- **Supabase Studio UI**: `http://localhost:8082` (Self-Hosted)
 
 ---
 

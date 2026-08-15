@@ -8,14 +8,16 @@ A modular, production-ready platform for deploying Telegram AI bots with **OpenR
 
 The platform includes a pre-configured, production-grade observability stack built with **Grafana**, **Loki**, **Promtail**, and **Prometheus**.
 
-### Accessing Observability Tools
+### Accessing Observability & Platform Ports
 
-| Dashboard / Tool | Access Link | Description & Usage |
+| Dashboard / Service | Access Link | Description & Usage |
 | :--- | :--- | :--- |
 | **Grafana Web UI** | `http://<SERVER_IP>:3000` | Platform metrics dashboard & log viewer. <br>**Default Credentials:** `admin` / `admin` |
 | **Live Logs (Loki)** | `http://<SERVER_IP>:3000/explore` | Query container JSON logs in real time. <br>**Loki Query:** `{job="docker"}` or `{container_name=~"telegram.*"}` |
 | **Prometheus UI** | `http://<SERVER_IP>:9090` | Raw metric targets, time-series data, and active scrapers. |
-| **Webhook Metrics API** | `http://<SERVER_IP>:8000/metrics` | Prometheus-formatted metrics exposed by the gateway server. |
+| **Webhook Metrics API** | `http://<SERVER_IP>:8000/metrics` | Prometheus-formatted metrics exposed by the gateway server (Port 8000). |
+| **Supabase Gateway (Self-Hosted)** | `http://<SERVER_IP>:8001` | PostgREST & Auth API Gateway *(Port 8001 to prevent conflict with Webhook Server)*. |
+| **Supabase Studio UI (Self-Hosted)** | `http://<SERVER_IP>:8082` | Database Web Dashboard *(Port 8082 to prevent conflict with Grafana)*. |
 
 ### Key Metrics Monitored
 
@@ -29,10 +31,11 @@ The platform includes a pre-configured, production-grade observability stack bui
 ## 🤖 Core Platform Features
 
 - **Multi-Instance Support**: Define and launch separate bot instances (e.g. Image Generators, Admin Bot) using simple YAML files in `instances/`.
-- **AI Generation Engine**: Unified media generator powered by OpenRouter / LiteLLM with fallback to offline mock generators for local development.
+- **Unified AI Generation Engine**: Powered by OpenRouter / LiteLLM with automatic fallback from `aimage_generation` to `acompletion` for multimodal vision/image models (e.g., Gemini 2.5 Flash, Gemini 3.1 Flash, FLUX, Recraft, Imagen 3).
+- **Binary & URL Media Handling**: Native support for both remote image URLs (`media_urls`) and raw base64 byte streams (`media_bytes` / `BufferedInputFile`).
 - **Telegram Stars Monetization**: Automatic daily free credit distribution, balance management, and `/buy` in-app star packages.
-- **Preset Engine**: Custom prompt styles (Anime, Cinematic, Digital Art, Photorealistic) configurable via YAML or database.
-- **Database Options**: Support for self-hosted PostgreSQL or Cloud Supabase with user profiles, transaction history, and generation logs.
+- **Preset Engine**: Custom prompt styles (Odyssey, Anime, Cyberpunk, Renaissance, Fine Art) configurable via YAML or database.
+- **Database Options**: Support for self-hosted PostgreSQL or Cloud Supabase with user profiles, transaction history, and graceful in-memory fallback when unconfigured.
 
 ---
 
