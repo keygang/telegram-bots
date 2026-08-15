@@ -47,6 +47,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: |
+          pip install --no-cache-dir pyyaml
           python -c "import yaml; yaml.safe_load(open('monitoring/prometheus/prometheus.yml'))"
           python -c "import yaml; yaml.safe_load(open('monitoring/promtail/promtail-config.yml'))"
           python -c "import yaml; yaml.safe_load(open('monitoring/loki/loki-config.yml'))"
