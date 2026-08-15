@@ -41,7 +41,6 @@ def get_waiting_for_photo_keyboard(
         _ = lambda k, **kw: i18n.get(k, **kw)
 
     buttons = [
-        [InlineKeyboardButton(text=_("preset_custom_button"), callback_data="preset:custom")],
         [InlineKeyboardButton(text=_("back_to_presets"), callback_data="presets_menu")],
         [InlineKeyboardButton(text=_("cancel_action_button"), callback_data="cancel_action")],
     ]

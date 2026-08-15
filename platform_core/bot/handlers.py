@@ -560,16 +560,30 @@ async def handle_custom_text_prompt(
 ):
     """
     Handles custom prompt text messages.
+    If user has chosen a preset (waiting_for_photo state), rejects text prompt since presets only allow photo uploads.
     If photo was stored in state, generates with photo + custom prompt text.
-    If no photo is in state (pure text prompt), generates pure text-to-image without photo.
+    If no photo is in state (pure text prompt outside presets), generates pure text-to-image without photo.
     """
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
+    current_state = await state.get_state()
+    state_data = await state.get_data()
+
+    # If user selected a preset, only photo upload is allowed. Reject text prompts inside preset flow.
+    if current_state == GenerationStates.waiting_for_photo.state:
+        preset_id = state_data.get("selected_preset_id", "")
+        kb = get_waiting_for_photo_keyboard(preset_id, _=_)
+        await message.answer(
+            _("preset_photo_required"),
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+        return
+
     prompt = message.text.strip()
     user_id = message.from_user.id
 
-    state_data = await state.get_data()
     ref_photo_bytes = await _resolve_reference_photo(bot, state_data)
     model_name = (user_profile and user_profile.selected_model) or "google/gemini-2.5-flash-image"
 

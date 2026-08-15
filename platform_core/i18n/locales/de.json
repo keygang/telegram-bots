@@ -28,7 +28,8 @@
   "model_changed": "✅ Modell geändert zu {model}!",
   "btn_models": "⚙️ KI-Modelle",
   "btn_change_model": "⚙️ KI-Modell ändern",
-  "preset_selected_send_photo": "🎨 **Stil ausgewählt: {preset_title}**\n\n📸 Bitte laden Sie jetzt Ihr Porträtfoto hoch, um es mit diesem Stil zu verwandeln!\n\n_Oder senden Sie einen Text-Prompt, um ohne Foto zu generieren._",
+  "preset_selected_send_photo": "🎨 **Stil ausgewählt: {preset_title}**\n\n📸 Bitte laden Sie jetzt Ihr Porträtfoto hoch, um es mit diesem Stil zu verwandeln!",
+  "preset_photo_required": "📸 **Foto-Upload erforderlich**\n\nStile dienen der Verwandlung von hochgeladenen Fotos. Bitte laden Sie ein Foto hoch, um diesen Stil anzuwenden, oder brechen Sie ab, um eigene Text-Prompts außerhalb von Stilen zu nutzen.",
   "cancel_action_button": "❌ Abbrechen",
   "action_cancelled": "❌ Auswahl abgebrochen. Wählen Sie einen Stil oder laden Sie ein Foto hoch!",
   "custom_prompt_with_photo": "✏️ **Eigener Stil für das Foto**\n\nBeschreiben Sie, wie Ihr Foto verwandelt werden soll:"

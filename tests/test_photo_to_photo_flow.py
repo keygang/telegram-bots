@@ -297,3 +297,42 @@ async def test_legacy_reference_photo_bytes_compatibility(mock_bot, memory_fsm_c
         call_kwargs = mock_run_gen.call_args.kwargs
         assert call_kwargs["reference_photo_bytes"] == b"LEGACY_RAW_BYTES_999"
 
+
+@pytest.mark.asyncio
+async def test_preset_rejects_text_prompt_and_requires_photo(mock_bot, memory_fsm_context):
+    """
+    When a preset is chosen, the bot enters waiting_for_photo state.
+    Sending a text prompt must be rejected, prompting the user to upload a photo or cancel.
+    """
+    await memory_fsm_context.set_state(GenerationStates.waiting_for_photo)
+    await memory_fsm_context.update_data(selected_preset_id="cyberpunk")
+
+    user = User(id=2001, is_bot=False, first_name="Alice")
+    chat = Chat(id=1001, type="private")
+
+    text_msg = MagicMock(spec=Message)
+    text_msg.message_id = 45
+    text_msg.chat = chat
+    text_msg.from_user = user
+    text_msg.text = "Just create a cyberpunk robot without photo"
+    text_msg.answer = AsyncMock()
+
+    with patch("platform_core.bot.handlers.run_generation_job", new_callable=AsyncMock) as mock_run_gen:
+        await handle_custom_text_prompt(
+            message=text_msg,
+            state=memory_fsm_context,
+            bot=mock_bot,
+            bot_id="image_bot",
+        )
+
+        # Generation must NOT be executed
+        assert not mock_run_gen.called
+        # Must answer with photo requirement notification
+        assert text_msg.answer.called
+        answer_call_args = text_msg.answer.call_args
+        assert "Photo" in answer_call_args[0][0] or "photo" in answer_call_args[0][0]
+
+    # State must remain waiting_for_photo so the user can upload a photo
+    assert await memory_fsm_context.get_state() == GenerationStates.waiting_for_photo.state
+
+

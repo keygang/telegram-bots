@@ -27,13 +27,11 @@ class MockMediaGenerator(BaseMediaGenerator):
         # Text banner
         title_text = "AI GENERATED MOCK PHOTO"
         prompt_text = f"Prompt: {request.prompt[:60]}..."
-        model_text = f"Model: {request.model_name}"
         ref_text = "Photo Reference: YES" if request.reference_photo_bytes else "Photo Reference: NO"
 
         draw.text((50, 80), title_text, fill=(255, 255, 255))
         draw.text((50, 140), prompt_text, fill=(200, 220, 255))
-        draw.text((50, 180), model_text, fill=(180, 180, 180))
-        draw.text((50, 220), ref_text, fill=(150, 255, 150))
+        draw.text((50, 190), ref_text, fill=(150, 255, 150))
 
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG", quality=85)

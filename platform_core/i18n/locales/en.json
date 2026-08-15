@@ -28,7 +28,8 @@
   "model_changed": "✅ Model switched to {model}!",
   "btn_models": "⚙️ AI Models",
   "btn_change_model": "⚙️ Change AI Model",
-  "preset_selected_send_photo": "🎨 **Preset Selected: {preset_title}**\n\n📸 Please upload your portrait photo now to transform it with this style!\n\n_Or send a text prompt to generate without a photo._",
+  "preset_selected_send_photo": "🎨 **Preset Selected: {preset_title}**\n\n📸 Please upload your portrait photo now to transform it with this style!",
+  "preset_photo_required": "📸 **Photo Upload Required**\n\nPresets are designed to transform uploaded photos. Please upload a photo to apply this preset, or cancel to use custom text prompts outside presets.",
   "cancel_action_button": "❌ Cancel Selection",
   "action_cancelled": "❌ Selection cancelled. Choose a style preset or upload a photo to start!",
   "custom_prompt_with_photo": "✏️ **Custom Style for Photo**\n\nSend a description of how you want to transform your uploaded photo:"

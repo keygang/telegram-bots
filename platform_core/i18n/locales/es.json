@@ -28,7 +28,8 @@
   "model_changed": "✅ ¡Modelo cambiado a {model}!",
   "btn_models": "⚙️ Modelos de IA",
   "btn_change_model": "⚙️ Cambiar modelo de IA",
-  "preset_selected_send_photo": "🎨 **Estilo Seleccionado: {preset_title}**\n\n📸 ¡Por favor, sube tu foto de retrato ahora para transformarla con este estilo!\n\n_O envía un prompt de texto para generar sin foto._",
+  "preset_selected_send_photo": "🎨 **Estilo Seleccionado: {preset_title}**\n\n📸 ¡Por favor, sube tu foto de retrato ahora para transformarla con este estilo!",
+  "preset_photo_required": "📸 **Se requiere subir una foto**\n\nLos estilos predefinidos están diseñados para transformar fotos subidas. Sube una foto para aplicar este estilo, o cancela para usar prompts de texto personalizados fuera de los estilos.",
   "cancel_action_button": "❌ Cancelar",
   "action_cancelled": "❌ Selección cancelada. ¡Elige un estilo o sube una foto para comenzar!",
   "custom_prompt_with_photo": "✏️ **Estilo personalizado para la foto**\n\nEnvía una descripción de cómo transformar tu foto:"

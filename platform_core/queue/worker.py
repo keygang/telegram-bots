@@ -63,7 +63,7 @@ class AIWorkerPool:
             res = await generator.generate(gen_req)
 
             if res.status == "success" and (res.media_urls or res.media_bytes):
-                caption = f"✨ *{job.prompt}*\n\n🤖 _Model: {job.model_name}_"
+                caption = f"✨ *{job.prompt}*"
 
                 if res.media_bytes:
                     media_input = BufferedInputFile(res.media_bytes, filename="generated.png")

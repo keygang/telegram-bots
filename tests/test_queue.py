@@ -85,3 +85,38 @@ async def test_ai_worker_pool_processing(monkeypatch):
 
     assert len(processed_jobs) == 1
     assert processed_jobs[0].job_id == "worker_test_job"
+
+
+@pytest.mark.asyncio
+async def test_worker_process_job_caption_without_model():
+    broker = TaskQueueBroker(redis_url=None)
+    worker_pool = AIWorkerPool(broker=broker, concurrency=1, force_mock=True)
+
+    job = GenerationJob(
+        job_id="caption_test_job",
+        bot_id="image_bot_1",
+        bot_token="12345:MOCK_TOKEN",
+        user_id=100,
+        chat_id=100,
+        status_message_id=200,
+        prompt="Cyberpunk neon city",
+        model_name="google/gemini-2.5-flash-image",
+    )
+
+    from unittest.mock import AsyncMock, patch, MagicMock
+    mock_bot = AsyncMock()
+    mock_bot.send_photo = AsyncMock()
+    mock_bot.delete_message = AsyncMock()
+
+    with patch("platform_core.queue.worker.Bot", return_value=mock_bot), \
+         patch("platform_core.db.db.record_event", new_callable=AsyncMock), \
+         patch("platform_core.db.db.log_generation", new_callable=AsyncMock):
+        await worker_pool.process_job(job)
+
+        assert mock_bot.send_photo.called
+        call_kwargs = mock_bot.send_photo.call_args.kwargs
+        caption = call_kwargs["caption"]
+        assert "Model:" not in caption
+        assert "gemini-2.5-flash-image" not in caption
+        assert "Cyberpunk neon city" in caption
+
