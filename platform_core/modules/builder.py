@@ -110,27 +110,43 @@ class ModularBotBuilder:
         self.constants: Dict[str, Any] = {}
         self._modules: List[BaseBotModule] = []
         self._custom_presets: List[PromptPreset] = []
+        self._promoted_preset_ids: List[str] = []
 
     def add_module(self, module: BaseBotModule) -> "ModularBotBuilder":
         """Adds a feature module to the bot."""
         self._modules.append(module)
         return self
 
-    def load_presets_from_yaml(self, file_path: Union[str, Path]) -> "ModularBotBuilder":
+    def set_promoted_preset_ids(self, preset_ids: List[str]) -> "ModularBotBuilder":
+        """Sets the preset IDs that should be prioritized at the beginning for this bot."""
+        self._promoted_preset_ids = list(preset_ids)
+        return self
+
+    def load_presets_from_yaml(self, file_path: Union[str, Path], promote: bool = True) -> "ModularBotBuilder":
         """Loads and attaches custom presets from a YAML file."""
         mod = PresetsModule.from_yaml_file(file_path)
         self._modules.append(mod)
+        if promote:
+            for p in mod.get_presets():
+                if p.id not in self._promoted_preset_ids:
+                    self._promoted_preset_ids.append(p.id)
         return self
 
-    def load_presets_from_json(self, file_path: Union[str, Path]) -> "ModularBotBuilder":
+    def load_presets_from_json(self, file_path: Union[str, Path], promote: bool = True) -> "ModularBotBuilder":
         """Loads and attaches custom presets from a JSON file."""
         mod = PresetsModule.from_json_file(file_path)
         self._modules.append(mod)
+        if promote:
+            for p in mod.get_presets():
+                if p.id not in self._promoted_preset_ids:
+                    self._promoted_preset_ids.append(p.id)
         return self
 
-    def add_preset(self, preset: PromptPreset) -> "ModularBotBuilder":
+    def add_preset(self, preset: PromptPreset, promote: bool = True) -> "ModularBotBuilder":
         """Attaches an individual custom preset."""
         self._custom_presets.append(preset)
+        if promote and preset.id not in self._promoted_preset_ids:
+            self._promoted_preset_ids.append(preset.id)
         return self
 
     @classmethod
@@ -159,6 +175,10 @@ class ModularBotBuilder:
         builder = cls(bot_id=bot_id, token=token, strategy=strat)
         builder.constants = cfg.get("constants", {})
 
+        promoted_ids = cfg.get("promoted_presets") or cfg.get("promoted_preset_ids") or []
+        if isinstance(promoted_ids, list):
+            builder.set_promoted_preset_ids([str(pid) for pid in promoted_ids])
+
         # Parse modules
         modules_cfg = cfg.get("modules", [])
         for m_item in modules_cfg:
@@ -176,12 +196,17 @@ class ModularBotBuilder:
                 builder.add_module(AdminControlModule(**opts))
             elif m_name == "presets":
                 preset_file = opts.get("file")
+                mod_promoted = opts.get("promoted_presets") or opts.get("promoted_preset_ids")
+                if isinstance(mod_promoted, list):
+                    for pid in mod_promoted:
+                        if pid not in builder._promoted_preset_ids:
+                            builder._promoted_preset_ids.append(str(pid))
                 if preset_file:
                     preset_path = Path(preset_file)
                     if not preset_path.is_absolute():
                         preset_path = path.parent / preset_path
                     if preset_path.exists():
-                        builder.load_presets_from_yaml(preset_path)
+                        builder.load_presets_from_yaml(preset_path, promote=True)
 
         # Top-level presets_file or presets
         presets_file = cfg.get("presets_file")
@@ -190,7 +215,7 @@ class ModularBotBuilder:
             if not p_path.is_absolute():
                 p_path = path.parent / p_path
             if p_path.exists():
-                builder.load_presets_from_yaml(p_path)
+                builder.load_presets_from_yaml(p_path, promote=True)
 
         inline_presets = cfg.get("presets", [])
         if isinstance(inline_presets, list):
@@ -206,7 +231,7 @@ class ModularBotBuilder:
                         category=p_dict.get("category", "General"),
                         icon=p_dict.get("icon", "✨"),
                     )
-                    builder.add_preset(preset)
+                    builder.add_preset(preset, promote=True)
 
         return builder
 
@@ -251,7 +276,7 @@ class ModularBotBuilder:
             # Register presets provided by module
             presets = module.get_presets()
             if presets:
-                preset_manager.register_presets(presets)
+                preset_manager.register_presets(presets, bot_id=self.bot_id, promote=False)
 
             # Collect menu commands
             for cmd in module.get_bot_commands():
@@ -259,7 +284,10 @@ class ModularBotBuilder:
                     aggregated_commands.append(cmd)
 
         if self._custom_presets:
-            preset_manager.register_presets(self._custom_presets)
+            preset_manager.register_presets(self._custom_presets, bot_id=self.bot_id, promote=False)
+
+        if self._promoted_preset_ids:
+            preset_manager.register_bot_promoted_presets(self.bot_id, self._promoted_preset_ids)
 
         return ModularBot(
             bot=bot,

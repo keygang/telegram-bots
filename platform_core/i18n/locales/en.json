@@ -23,5 +23,9 @@
   "settings_title": "⚙️ **Bot Settings**\n\n🌐 **Current Language**: {language}\n\nSelect an option below to customize your experience:",
   "btn_change_language": "🌐 Change Language",
   "select_language_title": "🌐 **Select Your Language**:\nChoose your preferred interface language:",
-  "language_changed": "✅ **Language updated to {language}!**"
+  "language_changed": "✅ **Language updated to {language}!**",
+  "models_menu_title": "⚙️ **Select AI Generation Model**\n\n🎯 **Current Model**: `{current_model}`\n\nChoose your preferred AI image generator model:",
+  "model_changed": "✅ Model switched to {model}!",
+  "btn_models": "⚙️ AI Models",
+  "btn_change_model": "⚙️ Change AI Model"
 }

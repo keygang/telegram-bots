@@ -18,7 +18,7 @@ from platform_core.bot.keyboards import (
 )
 from platform_core.bot.states import GenerationStates
 from platform_core.db import db, GenerationLog, UserBalance, UserProfile
-from platform_core.generators import GeneratorFactory, GenerationRequest
+from platform_core.generators import GeneratorFactory, GenerationRequest, DEFAULT_AVAILABLE_MODELS
 from platform_core.i18n import i18n, SUPPORTED_LANGUAGES
 from platform_core.payments.packages import STAR_PACKAGES
 from platform_core.presets import preset_manager, PromptPreset
@@ -167,12 +167,17 @@ async def run_generation_job(
 
 
 @core_router.message(CommandStart())
-async def handle_start_command(message: Message, user_balance: Optional[UserBalance] = None, _: Optional[Callable[..., str]] = None):
+async def handle_start_command(
+    message: Message,
+    user_balance: Optional[UserBalance] = None,
+    bot_id: str = "default_bot",
+    _: Optional[Callable[..., str]] = None
+):
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
     credits = user_balance.credits_remaining if user_balance else 3
-    presets = await preset_manager.get_presets("image")
+    presets = await preset_manager.get_presets("image", bot_id=bot_id)
     welcome_text = _("welcome_text", credits=credits)
     kb = get_presets_keyboard(presets, _=_)
     await message.answer(welcome_text, reply_markup=kb, parse_mode="Markdown")
@@ -181,11 +186,15 @@ async def handle_start_command(message: Message, user_balance: Optional[UserBala
 @core_router.message(Command("presets"))
 @core_router.callback_query(F.data == "presets_menu")
 @core_router.callback_query(F.data == "main_menu")
-async def handle_presets_menu(event: Message | CallbackQuery, _: Optional[Callable[..., str]] = None):
+async def handle_presets_menu(
+    event: Message | CallbackQuery,
+    bot_id: str = "default_bot",
+    _: Optional[Callable[..., str]] = None
+):
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
-    presets = await preset_manager.get_presets("image")
+    presets = await preset_manager.get_presets("image", bot_id=bot_id)
     kb = get_presets_keyboard(presets, _=_)
     text = _("presets_menu_title")
     if isinstance(event, CallbackQuery):
@@ -319,6 +328,59 @@ async def handle_set_language(
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 
 
+# --- MODEL SELECTION HANDLERS ---
+
+@core_router.message(Command("models"))
+@core_router.callback_query(F.data == "models_menu")
+async def handle_models_menu(
+    event: Message | CallbackQuery,
+    user_profile: Optional[UserProfile] = None,
+    _: Optional[Callable[..., str]] = None
+):
+    """Displays AI Model Selection menu with current active model checked."""
+    if _ is None:
+        _ = lambda k, **kw: i18n.get(k, **kw)
+
+    current_model = (user_profile and user_profile.selected_model) or "google/gemini-2.5-flash-image"
+    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, current_model, _=_)
+    short_name = current_model.split("/")[-1]
+    text = _("models_menu_title", current_model=short_name)
+
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+
+@core_router.callback_query(F.data.startswith("set_model:"))
+async def handle_set_model(
+    callback: CallbackQuery,
+    user_profile: Optional[UserProfile] = None,
+    _: Optional[Callable[..., str]] = None
+):
+    """Persists user model selection and refreshes the model menu."""
+    if _ is None:
+        _ = lambda k, **kw: i18n.get(k, **kw)
+
+    model_name = callback.data.split("set_model:")[1]
+    user_id = callback.from_user.id
+
+    # Persist user model selection
+    await db.update_user_model(telegram_id=user_id, model_name=model_name)
+    if user_profile:
+        user_profile.selected_model = model_name
+
+    short_name = model_name.split("/")[-1]
+    alert_text = _("model_changed", model=short_name)
+    await callback.answer(alert_text, show_alert=True)
+
+    # Re-render models menu with new checkmark
+    kb = get_models_keyboard(DEFAULT_AVAILABLE_MODELS, model_name, _=_)
+    text = _("models_menu_title", current_model=short_name)
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+
 # --- GENERATION & PROMPT HANDLERS ---
 
 @core_router.callback_query(F.data.startswith("preset:"))
@@ -375,6 +437,7 @@ async def handle_photo_upload(
     message: Message,
     state: FSMContext,
     bot: Bot,
+    bot_id: str = "default_bot",
     _: Optional[Callable[..., str]] = None
 ):
     """Handles photo upload for photo-to-photo face avatar generation."""
@@ -389,7 +452,7 @@ async def handle_photo_upload(
     await state.update_data(reference_photo_bytes=photo_bytes)
     await state.set_state(GenerationStates.selecting_preset)
 
-    presets = await preset_manager.get_presets("image")
+    presets = await preset_manager.get_presets("image", bot_id=bot_id)
     kb = get_presets_keyboard(presets, _=_)
     await message.answer(
         _("photo_received"),
@@ -404,6 +467,7 @@ async def handle_custom_text_prompt(
     state: FSMContext,
     bot: Bot,
     bot_id: str = "default_bot",
+    user_profile: Optional[UserProfile] = None,
     _: Optional[Callable[..., str]] = None
 ):
     """Handles custom prompt text messages."""
@@ -415,6 +479,7 @@ async def handle_custom_text_prompt(
 
     state_data = await state.get_data()
     ref_photo_bytes = state_data.get("reference_photo_bytes")
+    model_name = (user_profile and user_profile.selected_model) or "google/gemini-2.5-flash-image"
 
     await run_generation_job(
         bot=bot,
@@ -423,6 +488,7 @@ async def handle_custom_text_prompt(
         prompt=prompt,
         reference_photo_bytes=ref_photo_bytes,
         media_type="image",
+        model_name=model_name,
         bot_id=bot_id,
         _=_
     )

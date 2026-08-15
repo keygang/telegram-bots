@@ -23,5 +23,9 @@
   "settings_title": "⚙️ **Bot-Einstellungen**\n\n🌐 **Aktuelle Sprache**: {language}\n\nWählen Sie unten eine Option aus:",
   "btn_change_language": "🌐 Sprache ändern",
   "select_language_title": "🌐 **Wählen Sie Ihre Sprache**:\nWählen Sie Ihre bevorzugte Sprache:",
-  "language_changed": "✅ **Sprache erfolgreich auf {language} geändert!**"
+  "language_changed": "✅ **Sprache erfolgreich auf {language} geändert!**",
+  "models_menu_title": "⚙️ **KI-Modell auswählen**\n\n🎯 **Aktuelles Modell**: `{current_model}`\n\nWählen Sie Ihr bevorzugtes Bilderzeugungsmodell:",
+  "model_changed": "✅ Modell geändert zu {model}!",
+  "btn_models": "⚙️ KI-Modelle",
+  "btn_change_model": "⚙️ KI-Modell ändern"
 }

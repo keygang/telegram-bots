@@ -23,5 +23,9 @@
   "settings_title": "⚙️ **Ajustes del Bot**\n\n🌐 **Idioma Actual**: {language}\n\nSelecciona una opción a continuación para personalizar tu experiencia:",
   "btn_change_language": "🌐 Cambiar Idioma",
   "select_language_title": "🌐 **Selecciona tu Idioma**:\nElige tu idioma de interfaz preferido:",
-  "language_changed": "✅ **¡Idioma actualizado a {language}!**"
+  "language_changed": "✅ **¡Idioma actualizado a {language}!**",
+  "models_menu_title": "⚙️ **Seleccionar modelo de IA**\n\n🎯 **Modelo actual**: `{current_model}`\n\nElige tu modelo de generación de imágenes preferido:",
+  "model_changed": "✅ ¡Modelo cambiado a {model}!",
+  "btn_models": "⚙️ Modelos de IA",
+  "btn_change_model": "⚙️ Cambiar modelo de IA"
 }

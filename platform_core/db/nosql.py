@@ -62,10 +62,10 @@ class SupabaseNoSQLManager:
             presets = [p for p in presets if p.media_type == media_type]
 
         if bot_id:
-            presets = [
-                p for p in presets
-                if not p.target_bot_id or p.target_bot_id == "all" or p.target_bot_id == bot_id
-            ]
+            # Reorder so presets specifically targeted for this bot appear at the beginning (promoted)
+            targeted = [p for p in presets if p.target_bot_id == bot_id]
+            others = [p for p in presets if p.target_bot_id != bot_id]
+            presets = targeted + others
 
         return presets
 

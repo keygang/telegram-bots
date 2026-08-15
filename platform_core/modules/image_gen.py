@@ -6,6 +6,15 @@ from platform_core.modules.base import BaseBotModule
 from platform_core.presets import DEFAULT_IMAGE_PRESETS, PromptPreset
 
 
+DEFAULT_AVAILABLE_MODELS: List[str] = [
+    "google/gemini-2.5-flash-image",
+    "black-forest-labs/flux-1.1-pro",
+    "openai/dall-e-3",
+    "stabilityai/stable-diffusion-3.5-large",
+    "recraft-ai/recraft-v3",
+]
+
+
 class ImageGenModule(BaseBotModule):
     """
     Pluggable Image Generation Module.
@@ -17,10 +26,12 @@ class ImageGenModule(BaseBotModule):
     def __init__(
         self,
         default_model: str = "google/gemini-2.5-flash-image",
+        available_models: Optional[List[str]] = None,
         custom_presets: Optional[List[PromptPreset]] = None,
         **_kwargs: Any,
     ):
         self.default_model = default_model
+        self.available_models = available_models or list(DEFAULT_AVAILABLE_MODELS)
         self.custom_presets = custom_presets or DEFAULT_IMAGE_PRESETS
         self._router = core_router
 

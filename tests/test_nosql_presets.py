@@ -27,12 +27,13 @@ async def test_nosql_preset_crud():
     assert fetched is not None
     assert fetched.prompt_template == "A futuristic space station, {user_prompt}"
 
-    # 3. Filter presets by bot_id
+    # 3. Presets ordering with bot_id prioritization (common presets with bot promotion)
     bot1_presets = await nosql_manager.get_presets(bot_id="image_bot_1")
     assert any(p.id == "test_nosql_1" for p in bot1_presets)
+    assert bot1_presets[0].id == "test_nosql_1"  # Promoted to top for image_bot_1
 
     bot2_presets = await nosql_manager.get_presets(bot_id="image_bot_2")
-    assert not any(p.id == "test_nosql_1" for p in bot2_presets)
+    assert any(p.id == "test_nosql_1" for p in bot2_presets)  # Common preset accessible to image_bot_2
 
     # 4. Toggle active status
     updated = await nosql_manager.toggle_preset_active("test_nosql_1", is_active=False)

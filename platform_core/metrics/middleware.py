@@ -22,12 +22,12 @@ class MetricsMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
+        # Inject bot_id into handler context data
+        data["bot_id"] = self.bot_id
+
         start_time = time.time()
         result = await handler(event, data)
         duration_ms = int((time.time() - start_time) * 1000)
-
-        # Inject bot_id into handler context data
-        data["bot_id"] = self.bot_id
 
         if isinstance(event, Message) and event.from_user:
             event_name = event.text.split()[0] if event.text else "media_upload"

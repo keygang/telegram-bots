@@ -2,6 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
+DEFAULT_AVAILABLE_MODELS: List[str] = [
+    "google/gemini-2.5-flash-image",
+    "black-forest-labs/flux-1.1-pro",
+    "openai/dall-e-3",
+    "stabilityai/stable-diffusion-3.5-large",
+    "recraft-ai/recraft-v3",
+]
+
 
 class GenerationRequest(BaseModel):
     """Encapsulates all parameters for an image or video generation job."""

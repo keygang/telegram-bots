@@ -108,6 +108,25 @@ class SupabaseManager:
             self._in_memory_users[telegram_id] = profile
             return profile
 
+    async def update_user_model(self, telegram_id: int, model_name: str) -> Optional[UserProfile]:
+        """Updates user's selected AI model preference persistently."""
+        if self.client:
+            try:
+                res = self.client.table("users").update({"selected_model": model_name}).eq("telegram_id", telegram_id).execute()
+                if res.data:
+                    return UserProfile(**res.data[0])
+            except Exception as e:
+                logger.error(f"Supabase update_user_model error: {e}")
+
+        # In-memory fallback
+        if telegram_id in self._in_memory_users:
+            self._in_memory_users[telegram_id].selected_model = model_name
+            return self._in_memory_users[telegram_id]
+        else:
+            profile = UserProfile(telegram_id=telegram_id, selected_model=model_name)
+            self._in_memory_users[telegram_id] = profile
+            return profile
+
     # --- CREDIT & MONETIZATION BALANCE OPERATIONS ---
 
     async def get_user_balance(self, user_id: int) -> UserBalance:

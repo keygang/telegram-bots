@@ -82,12 +82,13 @@ def get_main_action_keyboard(user_credits: int, _: Optional[Callable[[str], str]
 
 
 def get_settings_keyboard(_: Optional[Callable[[str], str]] = None) -> InlineKeyboardMarkup:
-    """Renders settings keyboard with language change option."""
+    """Renders settings keyboard with language change and model options."""
     if _ is None:
         _ = lambda k, **kw: i18n.get(k, **kw)
 
     buttons = [
         [InlineKeyboardButton(text=_("btn_change_language"), callback_data="change_language")],
+        [InlineKeyboardButton(text=_("btn_change_model"), callback_data="models_menu")],
         [InlineKeyboardButton(text=_("back_to_main_menu"), callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
