@@ -1,0 +1,114 @@
+name: Deploy Observability Stack 📊
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'monitoring/**'
+      - 'docker-compose.monitoring.yml'
+      - '.github/workflows/deploy-monitoring.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - dev
+      service:
+        description: 'Monitoring service to deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - grafana
+          - prometheus
+          - loki
+          - promtail
+      deploy_strategy:
+        description: 'Deployment Strategy'
+        required: true
+        default: 'ssh-remote'
+        type: choice
+        options:
+          - ssh-remote
+          - validate-config
+          - dry-run-test
+
+jobs:
+  validate-monitoring-config:
+    name: 🔍 Validate Monitoring Configs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Prometheus YAML Configuration
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -c "import yaml; yaml.safe_load(open('monitoring/prometheus/prometheus.yml'))"
+          python -c "import yaml; yaml.safe_load(open('monitoring/promtail/promtail-config.yml'))"
+          python -c "import yaml; yaml.safe_load(open('monitoring/loki/loki-config.yml'))"
+          python -c "import yaml; yaml.safe_load(open('monitoring/grafana/provisioning/datasources/datasources.yml'))"
+          python -c "import yaml; yaml.safe_load(open('monitoring/grafana/provisioning/dashboards/dashboards.yml'))"
+
+      - name: Validate Grafana Dashboard JSON Files
+        run: |
+          python -c "import json, glob; [json.load(open(f)) for f in glob.glob('monitoring/grafana/dashboards/*.json')]"
+
+      - name: Validate Docker Compose Monitoring Syntax
+        run: |
+          # Create temporary network for compose config check
+          docker network create telegram_net 2>/dev/null || true
+          docker compose -f docker-compose.monitoring.yml config
+
+  deploy:
+    name: 🚀 Deploy Observability (${{ inputs.service || 'all' }})
+    needs: validate-monitoring-config
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Strategy: Dry Run Test ---
+      - name: Dry Run Test Verification
+        if: ${{ inputs.deploy_strategy == 'dry-run-test' || inputs.deploy_strategy == 'validate-config' }}
+        run: |
+          echo "✅ Monitoring config validation and dry run complete."
+          echo "Target Environment: ${{ inputs.environment }}"
+          echo "Target Service: ${{ inputs.service }}"
+
+      # --- Strategy: SSH Remote Deployment ---
+      - name: SSH Remote Deploy Monitoring Stack
+        if: ${{ inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '' || github.event_name == 'push' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/telegram-bots || exit 1
+            git pull origin main
+
+            # Ensure shared Docker bridge network exists
+            docker network create telegram_net 2>/dev/null || true
+
+            TARGET="${{ inputs.service || 'all' }}"
+            echo "Deploying monitoring target: $TARGET"
+
+            if [ "$TARGET" = "all" ] || [ -z "$TARGET" ]; then
+              docker compose -f docker-compose.monitoring.yml up -d --remove-orphans
+            else
+              docker compose -f docker-compose.monitoring.yml up -d --no-deps $TARGET
+            fi
+
+            docker compose -f docker-compose.monitoring.yml ps

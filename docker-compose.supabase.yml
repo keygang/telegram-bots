@@ -1,0 +1,40 @@
+networks:
+  telegram_net:
+    name: telegram_net
+    external: true
+
+services:
+  supabase_db:
+    image: supabase/postgres:15.1.1.78
+    container_name: telegram_supabase_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - supabase_db_data:/var/lib/postgresql/data
+      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - telegram_net
+
+  supabase_rest:
+    image: postgrest/postgrest:v12.0.1
+    container_name: telegram_supabase_rest
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@supabase_db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_SERVER_PORT: 8001
+    depends_on:
+      - supabase_db
+    networks:
+      - telegram_net
+
+volumes:
+  supabase_db_data:

@@ -1,8 +1,17 @@
-name: Deploy Telegram Bot Instances 🚀
+name: Deploy Telegram Bots 🤖
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'bots/**'
+      - 'platform_core/**'
+      - 'instances/**'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-bots.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -15,7 +24,7 @@ on:
           - staging
           - dev
       bot_instance:
-        description: 'Bot Instance to deploy (e.g. "all", "image_bot_1")'
+        description: 'Target Service/Bot (e.g. "all", "image_bot_1", "admin_bot", "webhook_server", "ai_worker")'
         required: true
         default: 'all'
         type: string
@@ -60,7 +69,7 @@ jobs:
           uv run python -m platform_core.cli list
 
   deploy:
-    name: 🚀 Deploy Bot Instances (${{ inputs.bot_instance || 'all' }})
+    name: 🚀 Deploy Bot Services (${{ inputs.bot_instance || 'all' }})
     needs: validate-and-test
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'production' }}
@@ -77,9 +86,9 @@ jobs:
       - name: Dry Run Test Verification
         if: ${{ inputs.deploy_strategy == 'dry-run-test' }}
         run: |
-          echo "✅ Dry Run Deployment Validation Complete."
+          echo "✅ Dry Run Bot Deployment Validation Complete."
           echo "Target Environment: ${{ inputs.environment }}"
-          echo "Bot Instance: ${{ inputs.bot_instance }}"
+          echo "Target Service: ${{ inputs.bot_instance }}"
 
       # --- Strategy: Docker Compose Local/CI Build ---
       - name: Build & Test Docker Image
@@ -91,7 +100,7 @@ jobs:
           echo "🔍 Validating container execution with instance list..."
           docker run --rm telegram-bots-platform:${{ github.sha }} python -m platform_core.cli list
 
-          echo "🚀 Target instance: ${{ inputs.bot_instance }}"
+          echo "🚀 Validating docker-compose.yml config..."
           docker compose config
 
       # --- Strategy: SSH Remote Deployment ---
@@ -105,10 +114,17 @@ jobs:
           script: |
             cd /opt/telegram-bots || exit 1
             git pull origin main
-            echo "Restarting instance: ${{ inputs.bot_instance || 'all' }}"
-            docker compose --profile all down --remove-orphans || true
-            docker stop telegram_all_bots telegram_image_bot_2 || true
-            docker rm telegram_all_bots telegram_image_bot_2 || true
-            docker compose up -d --build --remove-orphans
-            docker compose ps
 
+            # Ensure shared Docker bridge network exists
+            docker network create telegram_net 2>/dev/null || true
+
+            TARGET="${{ inputs.bot_instance || 'all' }}"
+            echo "Deploying bot service target: $TARGET"
+
+            if [ "$TARGET" = "all" ] || [ -z "$TARGET" ]; then
+              docker compose --profile all up -d --build --remove-orphans
+            else
+              docker compose up -d --build --no-deps $TARGET
+            fi
+
+            docker compose ps

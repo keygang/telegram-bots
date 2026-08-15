@@ -78,15 +78,29 @@ presets:
 
 ## 🚀 Deployment & Operations
 
-### 1. Docker Compose (Hetzner / Linux Server)
-Deploy the full application stack and Grafana observability suite with a single command:
+The platform uses a decoupled deployment architecture so bots, telemetry, and databases can be deployed independently:
 
+### 1. Docker Compose Stacks (Hetzner / Linux Server)
 ```bash
+# Ensure shared Docker bridge network exists
+docker network create telegram_net 2>/dev/null || true
+
+# 1. Deploy Bots & App Services (Redis, Webhook Gateway, Workers, Bot instances)
 docker compose up -d --build
+
+# 2. Deploy Observability Stack (Grafana, Prometheus, Loki, Promtail)
+docker compose -f docker-compose.monitoring.yml up -d
+
+# 3. Deploy Self-Hosted Supabase / PostgreSQL Stack
+docker compose -f docker-compose.supabase.yml up -d
 ```
 
-### 2. GitHub Actions CI/CD
-Automated Python 3.12 testing (`ci.yml`) and manual SSH remote deployment workflow (`deploy.yml`) to Hetzner servers.
+### 2. GitHub Actions CI/CD Workflows
+- **`ci.yml`**: Automated Python 3.12 testing & bot instance YAML validation on PRs and pushes.
+- **`deploy-bots.yml`**: Dedicated deployment for bot services and webhook gateway.
+- **`deploy-monitoring.yml`**: Dedicated deployment for Prometheus & Grafana stack.
+- **`deploy-database.yml`**: Dedicated schema migrations & database provisioning.
+- **`docker-ghcr.yml`**: Multi-arch container image publisher to GHCR.
 
 ### 3. Kubernetes (`k8s/`)
 Production Kustomize manifests for Kubernetes clusters (`kubectl apply -k k8s/`).

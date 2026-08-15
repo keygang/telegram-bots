@@ -1,4 +1,7 @@
-version: '3.8'
+networks:
+  telegram_net:
+    name: telegram_net
+    driver: bridge
 
 services:
   redis:
@@ -7,6 +10,8 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    networks:
+      - telegram_net
 
   webhook_server:
     build: .
@@ -25,6 +30,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - telegram_net
 
   ai_worker:
     build: .
@@ -41,6 +48,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - telegram_net
 
   all_bots:
     build: .
@@ -59,6 +68,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - telegram_net
 
   image_bot_1:
     build: .
@@ -75,6 +86,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - telegram_net
 
   admin_bot:
     build: .
@@ -91,49 +104,5 @@ services:
       - REDIS_URL=redis://redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  prometheus:
-    image: prom/prometheus:v2.50.0
-    container_name: telegram_prometheus
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-
-  loki:
-    image: grafana/loki:2.9.4
-    container_name: telegram_loki
-    restart: unless-stopped
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml
-    command: -config.file=/etc/loki/loki-config.yml
-
-  promtail:
-    image: grafana/promtail:2.9.4
-    container_name: telegram_promtail
-    restart: unless-stopped
-    volumes:
-      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: -config.file=/etc/promtail/promtail-config.yml
-
-  grafana:
-    image: grafana/grafana:10.3.3
-    container_name: telegram_grafana
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-    depends_on:
-      - prometheus
-      - loki
-
+    networks:
+      - telegram_net

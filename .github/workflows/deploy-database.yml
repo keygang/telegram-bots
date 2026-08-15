@@ -1,0 +1,105 @@
+name: Deploy Database & Migrations 🗄️
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'docker-compose.supabase.yml'
+      - '.github/workflows/deploy-database.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - dev
+      action:
+        description: 'Database Operation'
+        required: true
+        default: 'apply-migrations'
+        type: choice
+        options:
+          - apply-migrations
+          - deploy-self-hosted-stack
+          - verify-schema
+      deploy_strategy:
+        description: 'Deployment Strategy'
+        required: true
+        default: 'ssh-remote'
+        type: choice
+        options:
+          - ssh-remote
+          - dry-run-test
+
+jobs:
+  validate-schema:
+    name: 🔍 Validate SQL Schema & Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Schema File Exists & Non-Empty
+        run: |
+          test -s supabase/schema.sql || (echo "❌ supabase/schema.sql is missing or empty" && exit 1)
+          echo "✅ supabase/schema.sql is valid ($(wc -l < supabase/schema.sql) lines)"
+
+      - name: Validate Docker Compose Supabase Syntax
+        run: |
+          docker network create telegram_net 2>/dev/null || true
+          docker compose -f docker-compose.supabase.yml config
+
+  deploy-or-migrate:
+    name: 🚀 Execute DB Action (${{ inputs.action || 'apply-migrations' }})
+    needs: validate-schema
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Strategy: Dry Run Test ---
+      - name: Dry Run Test Verification
+        if: ${{ inputs.deploy_strategy == 'dry-run-test' || inputs.action == 'verify-schema' }}
+        run: |
+          echo "✅ Database schema validation and dry run complete."
+          echo "Target Environment: ${{ inputs.environment }}"
+          echo "Database Action: ${{ inputs.action }}"
+
+      # --- Strategy: SSH Remote Deployment / Migration ---
+      - name: SSH Remote DB Migration / Deployment
+        if: ${{ (inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '' || github.event_name == 'push') && inputs.action != 'verify-schema' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/telegram-bots || exit 1
+            git pull origin main
+
+            # Ensure shared Docker bridge network exists
+            docker network create telegram_net 2>/dev/null || true
+
+            ACTION="${{ inputs.action || 'apply-migrations' }}"
+            echo "Executing database action: $ACTION"
+
+            if [ "$ACTION" = "deploy-self-hosted-stack" ]; then
+              docker compose -f docker-compose.supabase.yml up -d --remove-orphans
+              docker compose -f docker-compose.supabase.yml ps
+            elif [ "$ACTION" = "apply-migrations" ]; then
+              if docker ps | grep -q "telegram_supabase_db"; then
+                echo "Applying schema to running telegram_supabase_db container..."
+                docker exec -i telegram_supabase_db psql -U postgres -d postgres < supabase/schema.sql
+                echo "✅ Migrations successfully applied."
+              else
+                echo "⚠️ telegram_supabase_db container not running on host. If using external/cloud Supabase, apply supabase/schema.sql via Supabase Dashboard SQL Editor."
+              fi
+            fi
