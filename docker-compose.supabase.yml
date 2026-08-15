@@ -18,7 +18,10 @@ services:
       - supabase_db_data:/var/lib/postgresql/data
       - ./supabase/schema.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - telegram_net
+      telegram_net:
+        aliases:
+          - db
+          - supabase_db
 
   supabase_rest:
     image: postgrest/postgrest:v12.0.1
@@ -27,14 +30,17 @@ services:
     ports:
       - "8001:8001"
     environment:
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@supabase_db:5432/postgres
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
       PGRST_DB_SCHEMAS: public
       PGRST_DB_ANON_ROLE: postgres
       PGRST_SERVER_PORT: 8001
     depends_on:
       - supabase_db
     networks:
-      - telegram_net
+      telegram_net:
+        aliases:
+          - rest
+          - supabase_rest
 
   supabase_meta:
     image: supabase/postgres-meta:v0.84.2
@@ -42,15 +48,19 @@ services:
     restart: unless-stopped
     environment:
       PG_META_PORT: 8080
-      PG_META_DB_HOST: supabase_db
+      PG_META_DB_HOST: db
       PG_META_DB_PORT: 5432
       PG_META_DB_USER: postgres
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       PG_META_DB_NAME: postgres
+      PG_META_DB_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
     depends_on:
       - supabase_db
     networks:
-      - telegram_net
+      telegram_net:
+        aliases:
+          - meta
+          - supabase_meta
 
   supabase_studio:
     image: supabase/studio:latest
@@ -59,12 +69,12 @@ services:
     ports:
       - "8082:3000"
     environment:
-      STUDIO_PG_META_URL: http://supabase_meta:8080
+      STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DEFAULT_ORGANIZATION_NAME: Default Organization
       DEFAULT_PROJECT_NAME: Telegram Bots Platform
-      SUPABASE_URL: http://localhost:8001
-      SUPABASE_REST_URL: http://localhost:8001/rest/v1/
+      SUPABASE_URL: http://46.62.157.36:8001
+      SUPABASE_REST_URL: http://46.62.157.36:8001/rest/v1/
       SUPABASE_ANON_KEY: ${SUPABASE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy}
       SUPABASE_SERVICE_KEY: ${SUPABASE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy}
     depends_on:
