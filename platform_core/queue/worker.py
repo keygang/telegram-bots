@@ -16,10 +16,33 @@ from platform_core.queue.broker import GenerationJob, TaskQueueBroker, task_brok
 logger = logging.getLogger(__name__)
 
 
+class BotPool:
+    """
+    Persistent connection pool for aiogram.Bot instances.
+    Reuses Bot instances and underlying aiohttp ClientSessions across jobs
+    to eliminate TCP/TLS connection handshake latency.
+    """
+
+    def __init__(self):
+        self._bots: dict[str, Bot] = {}
+
+    def get_bot(self, token: str) -> Bot:
+        if token not in self._bots:
+            self._bots[token] = Bot(token=token)
+        return self._bots[token]
+
+    async def close_all(self) -> None:
+        for _token, bot in list(self._bots.items()):
+            with contextlib.suppress(Exception):
+                await bot.session.close()
+        self._bots.clear()
+
+
 class AIWorkerPool:
     """
     Decoupled Background Worker process pool for executing AI Media Generations.
     Pops jobs from TaskQueueBroker and pushes results to Telegram Bot API.
+    Reuses persistent Bot HTTP client sessions and acknowledges stream jobs.
     """
 
     def __init__(
@@ -31,6 +54,7 @@ class AIWorkerPool:
         self.broker = broker or task_broker
         self.concurrency = concurrency
         self.force_mock = force_mock
+        self.bot_pool = BotPool()
         self._running = False
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -43,7 +67,7 @@ class AIWorkerPool:
         logger.info(
             f"⚙️ Worker processing job [{job.job_id}] for user {job.user_id} (Model: {job.model_name})"
         )
-        bot = Bot(token=job.bot_token)
+        bot = self.bot_pool.get_bot(job.bot_token)
         start_time = time.time()
 
         try:
@@ -178,21 +202,23 @@ class AIWorkerPool:
                     text=f"❌ *Unexpected System Error*: _{e!s}_\n\n💰 _Credits refunded._",
                     parse_mode="Markdown",
                 )
-                await db.add_user_credits(
-                    user_id=job.user_id,
-                    bot_id=job.bot_id,
-                    stars_paid=0,
-                    credits_to_add=job.cost,
-                    telegram_charge_id="refund",
-                )
+            await db.add_user_credits(
+                user_id=job.user_id,
+                bot_id=job.bot_id,
+                stars_paid=0,
+                credits_to_add=job.cost,
+                telegram_charge_id="refund",
+            )
         finally:
-            await bot.session.close()
+            # Acknowledge job completion from Redis Stream
+            await self.broker.ack_job(job)
 
     async def _worker_loop(self, worker_idx: int) -> None:
         logger.info(f"🚀 AI Worker #{worker_idx} started")
+        consumer_name = f"worker_{worker_idx}"
         while self._running:
             try:
-                job = await self.broker.dequeue_job(timeout=1.5)
+                job = await self.broker.dequeue_job(consumer_name=consumer_name, timeout=1.5)
                 if job:
                     await self.process_job(job)
             except asyncio.CancelledError:
@@ -215,9 +241,10 @@ class AIWorkerPool:
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
     async def stop(self) -> None:
-        """Stops worker tasks gracefully."""
+        """Stops worker tasks and cleans up bot connection pools gracefully."""
         self._running = False
         for t in self._tasks:
             t.cancel()
+        await self.bot_pool.close_all()
         await self.broker.close()
         logger.info("AIWorkerPool shut down gracefully.")

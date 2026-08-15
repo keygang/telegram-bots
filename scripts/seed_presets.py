@@ -53,7 +53,9 @@ async def seed_presets(file_path: Path) -> int:
     print(f"🔍 Found {len(presets)} preset(s) to seed into database.")
     print("─" * 75)
 
-    db_status = "Supabase PostgreSQL" if db.client else "In-Memory Store (DB client offline/unconfigured)"
+    db_status = (
+        "Supabase PostgreSQL" if db.client else "In-Memory Store (DB client offline/unconfigured)"
+    )
     print(f"💾 Target Database: {db_status}")
     print("─" * 75)
 

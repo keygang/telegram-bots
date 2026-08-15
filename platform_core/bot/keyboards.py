@@ -201,4 +201,3 @@ def get_help_keyboard(_: Callable[..., str] | None = None) -> InlineKeyboardMark
         [InlineKeyboardButton(text=gettext("back_to_main_menu"), callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-

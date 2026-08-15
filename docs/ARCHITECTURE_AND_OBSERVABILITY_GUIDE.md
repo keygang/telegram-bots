@@ -1,5 +1,7 @@
 # 📚 Platform Architecture, Data Storage & Observability Guide
 
+> 💡 **Visual Architecture Diagrams**: For complete Mermaid diagrams covering high-level architecture, module class composition, generation request sequences, Stars monetization, and Docker deployment stacks, see [SYSTEM_ARCHITECTURE_DIAGRAMS.md](file:///Users/stasbokun/prog/telegram-bots/docs/SYSTEM_ARCHITECTURE_DIAGRAMS.md).
+
 This guide explains **why** each core technology (Supabase, Redis, Prometheus, Promtail, Loki, Grafana, LiteLLM) is used in the Telegram AI Bot Platform, **what purpose** it serves, and **how to actually query and extract data** from each system.
 
 ---

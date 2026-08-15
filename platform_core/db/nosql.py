@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 
@@ -12,6 +13,8 @@ class SupabaseNoSQLManager:
     NoSQL Document Repository powered by Supabase PostgreSQL (JSONB column `data`).
     Provides full CRUD operations for schemaless presets with automatic
     in-memory document fallback when Supabase is offline or unconfigured.
+    All synchronous PostgREST client operations are dispatched to worker threads
+    via asyncio.to_thread to prevent blocking the asyncio event loop.
     """
 
     def __init__(self):
@@ -39,10 +42,14 @@ class SupabaseNoSQLManager:
 
         if db.client:
             try:
-                query = db.client.table("preset_prompts").select("*")
-                if not include_inactive:
-                    query = query.eq("is_active", True)
-                res = query.execute()
+
+                def _fetch():
+                    query = db.client.table("preset_prompts").select("*")
+                    if not include_inactive:
+                        query = query.eq("is_active", True)
+                    return query.execute()
+
+                res = await asyncio.to_thread(_fetch)
 
                 if res.data:
                     for row in res.data:
@@ -76,7 +83,11 @@ class SupabaseNoSQLManager:
         """Fetches a single preset by ID."""
         if db.client:
             try:
-                res = db.client.table("preset_prompts").select("*").eq("id", preset_id).execute()
+                res = await asyncio.to_thread(
+                    lambda: (
+                        db.client.table("preset_prompts").select("*").eq("id", preset_id).execute()
+                    )
+                )
                 if res.data and len(res.data) > 0:
                     return self._parse_preset_from_row(res.data[0])
             except Exception as e:
@@ -105,7 +116,9 @@ class SupabaseNoSQLManager:
                     "target_bot_id": preset.target_bot_id or "all",
                     "data": doc,  # Full document stored as JSONB
                 }
-                db.client.table("preset_prompts").upsert(row_data).execute()
+                await asyncio.to_thread(
+                    lambda: db.client.table("preset_prompts").upsert(row_data).execute()
+                )
                 logger.info(f"Saved preset '{preset.id}' into Supabase NoSQL store.")
             except Exception as e:
                 logger.warning(
@@ -138,7 +151,9 @@ class SupabaseNoSQLManager:
 
         if db.client:
             try:
-                db.client.table("preset_prompts").delete().eq("id", preset_id).execute()
+                await asyncio.to_thread(
+                    lambda: db.client.table("preset_prompts").delete().eq("id", preset_id).execute()
+                )
                 logger.info(f"Deleted preset '{preset_id}' from Supabase NoSQL store.")
                 return True
             except Exception as e:

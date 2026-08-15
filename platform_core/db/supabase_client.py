@@ -1,6 +1,8 @@
+import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 
 from platform_core.config import settings
 from platform_core.db.models import (
@@ -23,6 +25,8 @@ from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -32,6 +36,8 @@ class SupabaseManager:
     """
     Asynchronous Repository Manager for Supabase (PostgreSQL) with automatic
     in-memory fallback when credentials are not configured.
+    All synchronous PostgREST client operations are dispatched to worker threads
+    via asyncio.to_thread to prevent blocking the asyncio event loop.
     """
 
     def __init__(self):
@@ -66,6 +72,10 @@ class SupabaseManager:
                         f"Failed to connect to Supabase ({settings.SUPABASE_URL}): {e}. Falling back to in-memory store."
                     )
 
+    async def _run_query(self, query_fn: Callable[[], T]) -> T:
+        """Executes a synchronous PostgREST query function in a worker thread."""
+        return await asyncio.to_thread(query_fn)
+
     # --- USER PROFILE OPERATIONS ---
 
     async def sync_user(
@@ -89,7 +99,9 @@ class SupabaseManager:
                 if language_code is not None:
                     data["language_code"] = language_code
 
-                res = self.client.table("users").upsert(data).execute()
+                res = await self._run_query(
+                    lambda: self.client.table("users").upsert(data).execute()
+                )
                 if res.data:
                     return UserProfile(**res.data[0])
             except Exception as e:
@@ -123,11 +135,13 @@ class SupabaseManager:
         """Updates user's language setting persistently."""
         if self.client:
             try:
-                res = (
-                    self.client.table("users")
-                    .update({"language_code": language_code})
-                    .eq("telegram_id", telegram_id)
-                    .execute()
+                res = await self._run_query(
+                    lambda: (
+                        self.client.table("users")
+                        .update({"language_code": language_code})
+                        .eq("telegram_id", telegram_id)
+                        .execute()
+                    )
                 )
                 if res.data:
                     return UserProfile(**res.data[0])
@@ -147,11 +161,13 @@ class SupabaseManager:
         """Updates user's selected AI model preference persistently."""
         if self.client:
             try:
-                res = (
-                    self.client.table("users")
-                    .update({"selected_model": model_name})
-                    .eq("telegram_id", telegram_id)
-                    .execute()
+                res = await self._run_query(
+                    lambda: (
+                        self.client.table("users")
+                        .update({"selected_model": model_name})
+                        .eq("telegram_id", telegram_id)
+                        .execute()
+                    )
                 )
                 if res.data:
                     return UserProfile(**res.data[0])
@@ -173,8 +189,13 @@ class SupabaseManager:
         now = utc_now()
         if self.client:
             try:
-                res = (
-                    self.client.table("user_balances").select("*").eq("user_id", user_id).execute()
+                res = await self._run_query(
+                    lambda: (
+                        self.client.table("user_balances")
+                        .select("*")
+                        .eq("user_id", user_id)
+                        .execute()
+                    )
                 )
                 if res.data:
                     balance = UserBalance(**res.data[0])
@@ -184,20 +205,31 @@ class SupabaseManager:
                             balance.credits_remaining, settings.FREE_DAILY_CREDITS
                         )
                         balance.free_credits_reset_at = now
-                        self.client.table("user_balances").update(
-                            {
-                                "credits_remaining": balance.credits_remaining,
-                                "free_credits_reset_at": now.isoformat(),
-                            }
-                        ).eq("user_id", user_id).execute()
+                        await self._run_query(
+                            lambda: (
+                                self.client.table("user_balances")
+                                .update(
+                                    {
+                                        "credits_remaining": balance.credits_remaining,
+                                        "free_credits_reset_at": now.isoformat(),
+                                    }
+                                )
+                                .eq("user_id", user_id)
+                                .execute()
+                            )
+                        )
                     return balance
                 else:
                     new_balance = UserBalance(
                         user_id=user_id, credits_remaining=settings.FREE_DAILY_CREDITS
                     )
-                    self.client.table("user_balances").insert(
-                        new_balance.model_dump(mode="json")
-                    ).execute()
+                    await self._run_query(
+                        lambda: (
+                            self.client.table("user_balances")
+                            .insert(new_balance.model_dump(mode="json"))
+                            .execute()
+                        )
+                    )
                     return new_balance
             except Exception as e:
                 logger.error(f"Supabase get_user_balance error: {e}")
@@ -221,9 +253,14 @@ class SupabaseManager:
         balance.credits_remaining -= amount
         if self.client:
             try:
-                self.client.table("user_balances").update(
-                    {"credits_remaining": balance.credits_remaining}
-                ).eq("user_id", user_id).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("user_balances")
+                        .update({"credits_remaining": balance.credits_remaining})
+                        .eq("user_id", user_id)
+                        .execute()
+                    )
+                )
             except Exception as e:
                 logger.error(f"Supabase deduct_user_credit error: {e}")
         return True
@@ -250,16 +287,27 @@ class SupabaseManager:
 
         if self.client:
             try:
-                self.client.table("user_balances").update(
-                    {
-                        "credits_remaining": balance.credits_remaining,
-                        "total_stars_spent": balance.total_stars_spent,
-                    }
-                ).eq("user_id", user_id).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("user_balances")
+                        .update(
+                            {
+                                "credits_remaining": balance.credits_remaining,
+                                "total_stars_spent": balance.total_stars_spent,
+                            }
+                        )
+                        .eq("user_id", user_id)
+                        .execute()
+                    )
+                )
 
-                self.client.table("star_transactions").insert(
-                    transaction.model_dump(mode="json")
-                ).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("star_transactions")
+                        .insert(transaction.model_dump(mode="json"))
+                        .execute()
+                    )
+                )
             except Exception as e:
                 logger.error(f"Supabase add_user_credits error: {e}")
         else:
@@ -279,22 +327,32 @@ class SupabaseManager:
 
         if self.client:
             try:
-                self.client.table("events").insert(event.model_dump(mode="json")).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("events").insert(event.model_dump(mode="json")).execute()
+                    )
+                )
                 return
             except Exception as e:
                 # Fallback to legacy bot_events table if events table is not yet migrated
                 try:
                     user_id_int = int(event.distinct_id) if event.distinct_id.isdigit() else 0
-                    self.client.table("bot_events").insert(
-                        {
-                            "bot_id": event.bot_id,
-                            "user_id": user_id_int,
-                            "event_type": event.properties.get("event_type", event.event),
-                            "event_name": event.event,
-                            "duration_ms": event.duration_ms,
-                            "metadata": event.properties,
-                        }
-                    ).execute()
+                    await self._run_query(
+                        lambda: (
+                            self.client.table("bot_events")
+                            .insert(
+                                {
+                                    "bot_id": event.bot_id,
+                                    "user_id": user_id_int,
+                                    "event_type": event.properties.get("event_type", event.event),
+                                    "event_name": event.event,
+                                    "duration_ms": event.duration_ms,
+                                    "metadata": event.properties,
+                                }
+                            )
+                            .execute()
+                        )
+                    )
                     return
                 except Exception as fallback_err:
                     logger.error(f"Supabase track_event error: {e} (fallback: {fallback_err})")
@@ -323,7 +381,7 @@ class SupabaseManager:
         if self.client:
             try:
                 payload = [e.model_dump(mode="json") for e in events]
-                self.client.table("events").insert(payload).execute()
+                await self._run_query(lambda: self.client.table("events").insert(payload).execute())
                 return
             except Exception as e:
                 logger.error(f"Supabase track_events_batch error: {e}")
@@ -347,22 +405,26 @@ class SupabaseManager:
         """
         if self.client:
             try:
-                q = self.client.table("events").select("*")
-                if event:
-                    q = q.eq("event", event)
-                if distinct_id:
-                    q = q.eq("distinct_id", str(distinct_id))
-                if bot_id:
-                    q = q.eq("bot_id", bot_id)
-                if status:
-                    q = q.eq("status", status)
-                if since:
-                    q = q.gte("timestamp", since.isoformat())
-                if property_filters:
-                    for k, v in property_filters.items():
-                        q = q.eq(f"properties->>{k}", str(v))
-                q = q.order("timestamp", desc=True).limit(limit)
-                res = q.execute()
+
+                def _build_and_run():
+                    q = self.client.table("events").select("*")
+                    if event:
+                        q = q.eq("event", event)
+                    if distinct_id:
+                        q = q.eq("distinct_id", str(distinct_id))
+                    if bot_id:
+                        q = q.eq("bot_id", bot_id)
+                    if status:
+                        q = q.eq("status", status)
+                    if since:
+                        q = q.gte("timestamp", since.isoformat())
+                    if property_filters:
+                        for k, v in property_filters.items():
+                            q = q.eq(f"properties->>{k}", str(v))
+                    q = q.order("timestamp", desc=True).limit(limit)
+                    return q.execute()
+
+                res = await self._run_query(_build_and_run)
                 return [AnalyticsEvent(**item) for item in res.data] if res.data else []
             except Exception as e:
                 logger.error(f"Supabase query_events error: {e}")
@@ -400,7 +462,13 @@ class SupabaseManager:
 
         if self.client:
             try:
-                self.client.table("bot_events").insert(event.model_dump(mode="json")).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("bot_events")
+                        .insert(event.model_dump(mode="json"))
+                        .execute()
+                    )
+                )
                 return
             except Exception as e:
                 logger.error(f"Supabase record_event error: {e}")
@@ -410,7 +478,13 @@ class SupabaseManager:
     async def log_generation(self, log: GenerationLog) -> None:
         if self.client:
             try:
-                self.client.table("generation_logs").insert(log.model_dump(mode="json")).execute()
+                await self._run_query(
+                    lambda: (
+                        self.client.table("generation_logs")
+                        .insert(log.model_dump(mode="json"))
+                        .execute()
+                    )
+                )
                 return
             except Exception as e:
                 logger.error(f"Supabase log_generation error: {e}")
@@ -422,26 +496,33 @@ class SupabaseManager:
     async def get_metrics_summary(self, bot_id: str | None = None) -> MetricsSummary:
         if self.client:
             try:
-                events_query = self.client.table("bot_events").select("*")
-                if bot_id:
-                    events_query = events_query.eq("bot_id", bot_id)
-                events_res = events_query.execute()
-                events = [BotEvent(**e) for e in events_res.data] if events_res.data else []
 
-                generations_query = self.client.table("generation_logs").select("*")
-                if bot_id:
-                    generations_query = generations_query.eq("bot_id", bot_id)
-                generations_res = generations_query.execute()
+                def _fetch_all_data():
+                    eq = self.client.table("bot_events").select("*")
+                    if bot_id:
+                        eq = eq.eq("bot_id", bot_id)
+                    eres = eq.execute()
+
+                    gq = self.client.table("generation_logs").select("*")
+                    if bot_id:
+                        gq = gq.eq("bot_id", bot_id)
+                    gres = gq.execute()
+
+                    tq = self.client.table("star_transactions").select("*")
+                    if bot_id:
+                        tq = tq.eq("bot_id", bot_id)
+                    tres = tq.execute()
+                    return eres, gres, tres
+
+                events_res, generations_res, transactions_res = await self._run_query(
+                    _fetch_all_data
+                )
+                events = [BotEvent(**e) for e in events_res.data] if events_res.data else []
                 generations = (
                     [GenerationLog(**g) for g in generations_res.data]
                     if generations_res.data
                     else []
                 )
-
-                transactions_query = self.client.table("star_transactions").select("*")
-                if bot_id:
-                    transactions_query = transactions_query.eq("bot_id", bot_id)
-                transactions_res = transactions_query.execute()
                 transactions = (
                     [StarTransaction(**t) for t in transactions_res.data]
                     if transactions_res.data

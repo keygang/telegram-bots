@@ -99,9 +99,7 @@ class PresetManager:
             if nosql_presets:
                 for p in nosql_presets:
                     presets_dict[p.id] = p
-                logger.info(
-                    f"Loaded {len(nosql_presets)} presets from database store."
-                )
+                logger.info(f"Loaded {len(nosql_presets)} presets from database store.")
         except Exception as e:
             logger.warning(f"Failed to fetch presets from database store: {e}")
 
