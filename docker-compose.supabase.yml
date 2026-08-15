@@ -36,5 +36,43 @@ services:
     networks:
       - telegram_net
 
+  supabase_meta:
+    image: supabase/postgres-meta:v0.84.2
+    container_name: telegram_supabase_meta
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase_db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PG_META_DB_NAME: postgres
+    depends_on:
+      - supabase_db
+    networks:
+      - telegram_net
+
+  supabase_studio:
+    image: supabase/studio:latest
+    container_name: telegram_supabase_studio
+    restart: unless-stopped
+    ports:
+      - "8082:3000"
+    environment:
+      STUDIO_PG_META_URL: http://supabase_meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DEFAULT_ORGANIZATION_NAME: Default Organization
+      DEFAULT_PROJECT_NAME: Telegram Bots Platform
+      SUPABASE_URL: http://localhost:8001
+      SUPABASE_REST_URL: http://localhost:8001/rest/v1/
+      SUPABASE_ANON_KEY: ${SUPABASE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy}
+    depends_on:
+      - supabase_db
+      - supabase_meta
+    networks:
+      - telegram_net
+
 volumes:
   supabase_db_data:
+
