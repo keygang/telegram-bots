@@ -83,7 +83,12 @@ presets:
 
 The platform uses a decoupled deployment architecture so bots, telemetry, and databases can be deployed independently:
 
-### 1. Docker Compose Stacks (Hetzner / Linux Server)
+### 1. Dokploy PaaS Deployment (Recommended for Easy VPS Deployments)
+The easiest way to self-host with automatic SSL (Let's Encrypt), Git auto-deployments, Traefik reverse proxying, and managed containers:
+- 📖 **Complete Guide**: [docs/DOKPLOY_DEPLOYMENT.md](file:///Users/stasbokun/prog/telegram-bots/docs/DOKPLOY_DEPLOYMENT.md)
+- 🐳 **Compose Stack**: `docker-compose.dokploy.yml`
+
+### 2. Docker Compose Stacks (Manual Linux / Hetzner Server)
 ```bash
 # Ensure shared Docker bridge network exists
 docker network create telegram_net 2>/dev/null || true
@@ -98,14 +103,14 @@ docker compose -f docker-compose.monitoring.yml up -d
 docker compose -f docker-compose.supabase.yml up -d
 ```
 
-### 2. GitHub Actions CI/CD Workflows
+### 3. GitHub Actions CI/CD Workflows
 - **`ci.yml`**: Automated Python 3.12 testing & bot instance YAML validation on PRs and pushes.
 - **`deploy-bots.yml`**: Dedicated deployment for bot services and webhook gateway.
 - **`deploy-monitoring.yml`**: Dedicated deployment for Prometheus & Grafana stack.
 - **`deploy-database.yml`**: Dedicated schema migrations & database provisioning.
 - **`docker-ghcr.yml`**: Multi-arch container image publisher to GHCR.
 
-### 3. Kubernetes (`k8s/`)
+### 4. Kubernetes (`k8s/`)
 Production Kustomize manifests for Kubernetes clusters (`kubectl apply -k k8s/`).
 
 ---

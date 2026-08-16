@@ -1,0 +1,122 @@
+networks:
+  telegram_net:
+    name: telegram_net
+    driver: bridge
+  dokploy-network:
+    external: true
+
+volumes:
+  redis_data:
+    name: telegram_redis_data
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: telegram_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - telegram_net
+
+  webhook_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-bots-webhook-server:latest
+    container_name: telegram_webhook_server
+    restart: unless-stopped
+    command: python -m platform_core.cli server --host 0.0.0.0 --port 8000
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      # Dokploy & Traefik Routing Configuration
+      - "traefik.enable=true"
+      - "traefik.http.routers.telegram-webhook.rule=Host(`${DOKPLOY_HOST:-bot.example.com}`)"
+      - "traefik.http.routers.telegram-webhook.entrypoints=websecure"
+      - "traefik.http.routers.telegram-webhook.tls=true"
+      - "traefik.http.routers.telegram-webhook.tls.certresolver=letsencrypt"
+      - "traefik.http.services.telegram-webhook.loadbalancer.server.port=8000"
+    networks:
+      - telegram_net
+      - dokploy-network
+
+  ai_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-bots-ai-worker:latest
+    container_name: telegram_ai_worker
+    restart: unless-stopped
+    command: python -m platform_core.cli worker --concurrency 4
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - telegram_net
+
+  image_bot_1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-bots-image-bot-1:latest
+    container_name: telegram_image_bot_1
+    restart: unless-stopped
+    command: python -m platform_core.cli start image_bot_1
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - telegram_net
+
+  admin_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-bots-admin-bot:latest
+    container_name: telegram_admin_bot
+    restart: unless-stopped
+    command: python -m platform_core.cli start admin_bot
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_FORMAT=json
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - telegram_net

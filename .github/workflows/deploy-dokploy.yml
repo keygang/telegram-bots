@@ -1,0 +1,139 @@
+name: Deploy via Dokploy 🚀
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bots/**'
+      - 'platform_core/**'
+      - 'instances/**'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'docker-compose.dokploy.yml'
+      - '.github/workflows/deploy-dokploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      deploy_method:
+        description: 'Dokploy Deployment Method'
+        required: true
+        default: 'webhook'
+        type: choice
+        options:
+          - webhook
+          - ssh-redeploy
+          - dry-run
+
+jobs:
+  validate-and-test:
+    name: 🧪 Validate Code & Dokploy Compose Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+
+      - name: Run Test Suite
+        run: |
+          uv run pytest
+
+      - name: Validate Bot Instance YAML Configurations
+        run: |
+          uv run python -m platform_core.cli list
+
+      - name: Validate Dokploy Compose Configuration
+        run: |
+          docker compose -f docker-compose.dokploy.yml config
+          echo "✅ docker-compose.dokploy.yml validated successfully."
+
+  deploy:
+    name: 🚀 Trigger Dokploy Deployment
+    needs: validate-and-test
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Method 1: Dry Run Test ---
+      - name: Dry Run Validation
+        if: ${{ inputs.deploy_method == 'dry-run' }}
+        run: |
+          echo "✅ Dry Run Completed. All configs and tests verified for Dokploy."
+
+      # --- Method 2: Dokploy Automated Webhook Trigger (Recommended) ---
+      - name: Trigger Dokploy Webhook API
+        if: ${{ (inputs.deploy_method == 'webhook' || inputs.deploy_method == '' || github.event_name == 'push') && secrets.DOKPLOY_WEBHOOK_URL != '' }}
+        run: |
+          echo "📡 Triggering Dokploy deployment webhook..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "Response Body: $BODY"
+          echo "HTTP Status Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "🎉 Dokploy deployment successfully triggered!"
+          else
+            echo "❌ Failed to trigger Dokploy deployment (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      # --- Method 3: SSH Fallback Trigger ---
+      - name: Deploy via SSH (Fallback)
+        if: ${{ inputs.deploy_method == 'ssh-redeploy' || (secrets.DOKPLOY_WEBHOOK_URL == '' && inputs.deploy_method != 'dry-run') }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🔄 Updating repository on server..."
+            cd /opt/telegram-bots || exit 1
+            git pull origin main
+
+            echo "🐳 Redeploying Dokploy compose stack..."
+            docker network create dokploy-network 2>/dev/null || true
+            docker network create telegram_net 2>/dev/null || true
+            docker compose -f docker-compose.dokploy.yml up -d --build --remove-orphans
+            docker compose -f docker-compose.dokploy.yml ps
+
+      # --- Health Check Verification ---
+      - name: Verify Webhook Health Endpoint
+        if: ${{ vars.DOKPLOY_HOST != '' || secrets.DOKPLOY_HOST != '' }}
+        run: |
+          HOST="${{ vars.DOKPLOY_HOST || secrets.DOKPLOY_HOST }}"
+          echo "🩺 Checking health on https://$HOST/health..."
+          sleep 10
+          for i in {1..6}; do
+            if curl -s -f "https://$HOST/health" > /dev/null; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Waiting for service to be ready (attempt $i/6)..."
+            sleep 5
+          done
+          echo "⚠️ Health check timed out, please check Dokploy logs."

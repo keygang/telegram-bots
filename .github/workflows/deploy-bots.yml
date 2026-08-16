@@ -12,6 +12,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'docker-compose.yml'
+      - 'docker-compose.dokploy.yml'
       - '.github/workflows/deploy-bots.yml'
   workflow_dispatch:
     inputs:
@@ -36,6 +37,7 @@ on:
         type: choice
         options:
           - k8s-remote
+          - dokploy-webhook
           - ssh-remote-docker-compose
           - docker-compose-ci
           - dry-run-test
@@ -109,6 +111,25 @@ jobs:
 
           echo "🚀 Validating docker-compose.yml config..."
           docker compose config
+
+      # --- Strategy: Dokploy Webhook Trigger ---
+      - name: Trigger Dokploy Webhook API
+        if: ${{ inputs.deploy_strategy == 'dokploy-webhook' }}
+        run: |
+          echo "📡 Triggering Dokploy deployment webhook..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "Response: $BODY"
+          echo "HTTP Status Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "🎉 Dokploy deployment successfully triggered!"
+          else
+            echo "❌ Failed to trigger Dokploy deployment (HTTP $HTTP_CODE)"
+            exit 1
+          fi
 
       # --- Strategy: Kubernetes (k3s) Remote Deployment ---
       - name: Deploy to Kubernetes Cluster (k3s)

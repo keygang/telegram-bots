@@ -5,9 +5,19 @@ description: >-
   its microservices, observability stack, and database stack via k3s Kubernetes and GitHub Actions CI/CD.
 ---
 
-# Deploy Telegram Bots Platform on k3s Kubernetes
+# Deploy Telegram Bots Platform (Dokploy & k3s Kubernetes)
 
-This skill provides step-by-step instructions for validating, building, and deploying the Telegram AI Bot Platform, its bot instances, and microservices via **k3s lightweight Kubernetes** and GitHub Actions CI/CD workflows.
+This skill provides step-by-step instructions for validating, building, and deploying the Telegram AI Bot Platform, its bot instances, and microservices via **Dokploy PaaS** (`docker-compose.dokploy.yml`) and **k3s lightweight Kubernetes** (`k8s/`).
+
+---
+
+## Dokploy PaaS Deployment (`docker-compose.dokploy.yml`)
+
+1. Install Dokploy on server: `curl -sSL https://dokploy.com/setup.sh | sh`
+2. Create Compose stack pointing to `docker-compose.dokploy.yml`.
+3. Set environment variables (`IMAGE_BOT_1_TOKEN`, `OPENROUTER_API_KEY`, `DOKPLOY_HOST`, etc.).
+4. Traefik automatically issues Let's Encrypt SSL on `DOKPLOY_HOST`.
+5. See full guide in [docs/DOKPLOY_DEPLOYMENT.md](file:///Users/stasbokun/prog/telegram-bots/docs/DOKPLOY_DEPLOYMENT.md).
 
 ---
 
