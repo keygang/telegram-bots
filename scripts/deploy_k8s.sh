@@ -20,14 +20,16 @@ fi
 echo "🐳 Building Docker image..."
 docker build -t telegram-bots-platform:latest .
 
+# Ensure namespace exists
+k3s kubectl get ns telegram-bots >/dev/null 2>&1 || k3s kubectl create ns telegram-bots
+
 # Sync Secrets from .env if present
 if [ -f .env ]; then
     echo "🔐 Syncing Kubernetes secret..."
-    k3s kubectl create namespace telegram-bots --dry-run=client -o yaml | k3s kubectl apply -f -
+    k3s kubectl delete secret telegram-bots-secret -n telegram-bots --ignore-not-found=true
     k3s kubectl create secret generic telegram-bots-secret \
         --namespace telegram-bots \
-        --from-env-file=.env \
-        --dry-run=client -o yaml | k3s kubectl apply -f -
+        --from-env-file=.env
 fi
 
 # Apply Kustomize manifests

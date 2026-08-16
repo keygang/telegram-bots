@@ -37,9 +37,8 @@ fi
 
 # Wait for k3s service to be active and ready
 echo "⏳ Waiting for k3s cluster to be ready..."
-until k3s kubectl get nodes | grep -q "Ready"; do
-    sleep 2
-done
+sleep 5
+k3s kubectl wait --for=condition=Ready node --all --timeout=60s || true
 k3s kubectl get nodes -o wide
 
 # 3. Stop legacy Docker Compose containers to free up host ports (8000, 6379)
@@ -50,14 +49,16 @@ docker compose down || true
 echo "🐳 Building Docker image for Telegram Bots Platform..."
 docker build -t telegram-bots-platform:latest .
 
-# 5. Create or update Kubernetes secret from .env
+# 5. Ensure namespace and create/update Kubernetes secret from .env
+echo "🔐 Setting up namespace and secrets..."
+k3s kubectl get ns telegram-bots >/dev/null 2>&1 || k3s kubectl create ns telegram-bots
+
 if [ -f .env ]; then
     echo "🔐 Syncing Kubernetes secret from .env..."
-    k3s kubectl create namespace telegram-bots --dry-run=client -o yaml | k3s kubectl apply -f -
+    k3s kubectl delete secret telegram-bots-secret -n telegram-bots --ignore-not-found=true
     k3s kubectl create secret generic telegram-bots-secret \
         --namespace telegram-bots \
-        --from-env-file=.env \
-        --dry-run=client -o yaml | k3s kubectl apply -f -
+        --from-env-file=.env
     echo "✅ Secret telegram-bots-secret updated."
 else
     echo "⚠️ Warning: .env file not found in ${REPO_DIR}!"
