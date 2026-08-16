@@ -36,6 +36,11 @@ jobs:
         run: |
           uv run python -m platform_core.cli list
 
+      - name: Validate Kubernetes Manifests (Kustomize)
+        run: |
+          kubectl kustomize k8s/ > /dev/null
+          echo "✅ All Kubernetes manifests in k8s/ are valid."
+
   docker-check:
     name: 🐳 Docker Build Verification
     runs-on: ubuntu-latest

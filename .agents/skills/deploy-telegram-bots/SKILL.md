@@ -2,32 +2,29 @@
 name: deploy-telegram-bots
 description: >-
   Instructions and procedures for building, testing, and deploying the Telegram AI Bot Platform,
-  its microservices, observability stack (Grafana, Prometheus, Loki, Promtail), and database stack via split GitHub Actions CI/CD.
+  its microservices, observability stack, and database stack via k3s Kubernetes and GitHub Actions CI/CD.
 ---
 
-# Deploy Telegram Bots, Observability & Database Stacks
+# Deploy Telegram Bots Platform on k3s Kubernetes
 
-This skill provides step-by-step instructions for validating, building, and deploying the Telegram AI Bot Platform, its bot instances, the Grafana observability stack, and Supabase database migrations via modular, decoupled GitHub Actions CI/CD workflows.
+This skill provides step-by-step instructions for validating, building, and deploying the Telegram AI Bot Platform, its bot instances, and microservices via **k3s lightweight Kubernetes** and GitHub Actions CI/CD workflows.
 
 ---
 
-## Modular Deployment Architecture
+## Architecture & Cluster Layout
 
-The platform separates deployments into three independent, decoupled domains:
+The platform runs on a single-node **k3s** Kubernetes cluster inside the `telegram-bots` namespace:
 
-1. **Bots & Platform Stack** (`docker-compose.yml` & `.github/workflows/deploy-bots.yml`)
-   - **Services**: `redis`, `webhook_server` (FastAPI /metrics), `ai_worker`, `all_bots`, `image_bot_1`, `admin_bot`.
-   - **Trigger**: Push to `main` when bot/platform code changes (`bots/**`, `platform_core/**`, `instances/**`, `docker-compose.yml`), or via `workflow_dispatch`.
-   - **Network**: Connects to `telegram_net` Docker bridge network.
+1. **Kubernetes Microservices (`k8s/` & `.github/workflows/deploy-bots.yml`)**
+   - `redis`: Redis 7 persistent datastore with `local-path` PersistentVolumeClaim (`/data`).
+   - `webhook-server`: FastAPI HTTP webhook gateway & Prometheus `/metrics` endpoint exposed on port 8000 via Service `LoadBalancer`.
+   - `ai-worker`: Background asynchronous worker processing AI generation queues with OpenRouter.
+   - `image-bot-1`: Dedicated microservice deployment running ImageBot instance.
+   - `admin-bot`: Dedicated microservice deployment running AdminBot instance.
 
-2. **Observability Stack** (`docker-compose.monitoring.yml` & `.github/workflows/deploy-monitoring.yml`)
-   - **Services**: `prometheus` (Port 9090), `loki` (Port 3100), `promtail`, `grafana` (Port 3000).
-   - **Trigger**: Push to `main` when monitoring files change (`monitoring/**`, `docker-compose.monitoring.yml`), or via `workflow_dispatch`.
-   - **Network**: Connects to shared `telegram_net` network to scrape `webhook_server:8000`.
-
-3. **Database & Migrations Stack** (`docker-compose.supabase.yml` & `.github/workflows/deploy-database.yml`)
-   - **Services**: `supabase_db` (PostgreSQL Port 5432), `supabase_rest` (PostgREST Port 8001), SQL migrations (`supabase/schema.sql`).
-   - **Trigger**: Push to `main` when database schema changes (`supabase/**`, `docker-compose.supabase.yml`), or via `workflow_dispatch`.
+2. **Triggering Deployments**:
+   - Push to `main` when bot/platform/k8s code changes.
+   - GitHub Actions `workflow_dispatch` on `deploy-bots.yml` using `k8s-remote` strategy.
 
 ---
 
@@ -35,110 +32,43 @@ The platform separates deployments into three independent, decoupled domains:
 
 ### 1. Pre-Deployment Code & Config Verification
 
-Before committing and triggering a deployment, always run tests and validate configurations:
+Before pushing to GitHub:
 
 ```bash
-# Run full pytest suite including Prometheus metric tests
+# Run full pytest suite
 uv run pytest
 
 # Validate all YAML bot configs in instances/
 uv run python -m platform_core.cli list
 
-# Validate Docker Compose configurations
-docker compose config
-docker network create telegram_net 2>/dev/null || true
-docker compose -f docker-compose.monitoring.yml config
-docker compose -f docker-compose.supabase.yml config
+# Validate Kubernetes manifests (Kustomize)
+kubectl kustomize k8s/
 ```
 
-### 2. Committing & Pushing to GitHub
+### 2. Manual Server Deployment via k3s CLI
 
-Pushing changes to `main` automatically triggers the bot deployment workflow (`deploy-bots.yml`) when bot/platform code is modified. Observability and Database workflows are dispatched manually on-demand:
-
-- **On commit to `main`**: `.github/workflows/deploy-bots.yml` triggers automatically for bot updates.
-- **Manual Trigger**: `.github/workflows/deploy-monitoring.yml` (Observability) via GitHub Actions `workflow_dispatch`.
-- **Manual Trigger**: `.github/workflows/deploy-database.yml` (Database & Migrations) via GitHub Actions `workflow_dispatch`.
-
----
-
-### 3. Deploying via GitHub Actions Workflows
-
-#### A. Deploying Bots (`deploy-bots.yml`)
-1. Navigate to GitHub -> **Actions** -> **Deploy Telegram Bots 🤖**
-2. Click **Run workflow**:
-   - **Environment**: `production` (or `staging` / `dev`)
-   - **Target Service/Bot**: `all` (or specific service e.g. `image_bot_1`, `admin_bot`, `webhook_server`, `ai_worker`)
-   - **Deployment Strategy**: `ssh-remote`, `docker-compose`, or `dry-run-test`
-
-#### B. Deploying Observability (`deploy-monitoring.yml`)
-1. Navigate to GitHub -> **Actions** -> **Deploy Observability Stack 📊**
-2. Click **Run workflow**:
-   - **Environment**: `production`
-   - **Service**: `all`, `grafana`, `prometheus`, `loki`, or `promtail`
-   - **Deployment Strategy**: `ssh-remote`, `validate-config`, or `dry-run-test`
-
-#### C. Deploying Database & Migrations (`deploy-database.yml`)
-1. Navigate to GitHub -> **Actions** -> **Deploy Database & Migrations 🗄️**
-2. Click **Run workflow**:
-   - **Environment**: `production`
-   - **Action**: `apply-migrations-and-seed`, `seed-presets`, `apply-migrations`, `deploy-self-hosted-stack`, or `verify-schema`
-   - **Presets File**: `bots/image_bot/presets.yaml`
-   - **Deployment Strategy**: `ssh-remote` or `dry-run-test`
-
-#### D. Seeding Prompt Presets (`seed-presets.yml`)
-1. Navigate to GitHub -> **Actions** -> **Seed Prompt Presets 🎨**
-2. Click **Run workflow**:
-   - **Environment**: `production`
-   - **Presets File**: `bots/image_bot/presets.yaml`
-   - **Execution Strategy**: `ssh-remote`, `direct-runner`, or `dry-run-test`
-
----
-
-## Local & Server Docker Compose Commands
+To deploy directly on the Hetzner server:
 
 ```bash
-# Ensure the shared network exists
-docker network create telegram_net 2>/dev/null || true
+# Full deployment / setup
+sudo /opt/telegram-bots/scripts/setup_k3s.sh
 
-# 1. Start Bots & Core Platform
-docker compose up -d
-
-# 2. Start Observability Stack (Grafana, Prometheus, Loki)
-docker compose -f docker-compose.monitoring.yml up -d
-
-# 3. Start Self-Hosted Supabase / PostgreSQL Stack (if self-hosting)
-docker compose -f docker-compose.supabase.yml up -d
-
-# Or run all stacks together:
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.supabase.yml up -d
+# Or update specific deployment target:
+sudo /opt/telegram-bots/scripts/deploy_k8s.sh all
+sudo /opt/telegram-bots/scripts/deploy_k8s.sh webhook_server
+sudo /opt/telegram-bots/scripts/deploy_k8s.sh image_bot_1
 ```
 
----
+### 3. Monitoring & Pod Status
 
-## Grafana & Observability Links
+```bash
+# Check all pods and services
+k3s kubectl get all -n telegram-bots
 
-Once deployed, the Grafana observability dashboard and live log stream can be accessed at:
+# Stream logs for a bot instance
+k3s kubectl logs -n telegram-bots -l app=image-bot-1 -f
 
-- **Grafana Web UI**: [http://localhost:3000](http://localhost:3000) (or `http://<SERVER_IP>:3000`)
-- **Default Credentials**: `admin` / `admin`
-- **Dashboard Path**: Dashboards -> **Telegram Bots Platform Dashboard**
-- **Prometheus Direct Metrics**: `http://localhost:8000/metrics`
-- **Loki Endpoint**: `http://localhost:3100`
-- **Supabase Studio / REST**: `http://localhost:8001` (Self-Hosted)
-
----
-
-## Troubleshooting Deployment Failures
-
-1. **GitHub Actions Failures**:
-   - Check job logs under **Actions** tab on GitHub.
-   - Verify secrets `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY` in repo settings.
-
-2. **Metrics Not Appearing in Grafana**:
-   - Ensure `telegram_net` Docker network is created and both stacks are connected.
-   - Verify `webhook_server` is running and returning HTTP 200 on `/metrics`.
-   - Check Prometheus targets at [http://localhost:9090/targets](http://localhost:9090/targets).
-
-3. **Logs Not Appearing in Loki**:
-   - Verify `LOG_FORMAT=json` is set in container environment variables.
-   - Ensure Promtail container has `/var/run/docker.sock` mounted.
+# Check webhook gateway health
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/metrics
+```

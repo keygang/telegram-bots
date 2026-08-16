@@ -7,6 +7,7 @@ on:
       - 'bots/**'
       - 'platform_core/**'
       - 'instances/**'
+      - 'k8s/**'
       - 'Dockerfile'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -31,16 +32,17 @@ on:
       deploy_strategy:
         description: 'Deployment Strategy'
         required: true
-        default: 'ssh-remote'
+        default: 'k8s-remote'
         type: choice
         options:
-          - ssh-remote
-          - docker-compose
+          - k8s-remote
+          - ssh-remote-docker-compose
+          - docker-compose-ci
           - dry-run-test
 
 jobs:
   validate-and-test:
-    name: 🧪 Validate Code & Instance Configs
+    name: 🧪 Validate Code, Configs & K8s Manifests
     runs-on: ubuntu-latest
 
     steps:
@@ -68,6 +70,11 @@ jobs:
         run: |
           uv run python -m platform_core.cli list
 
+      - name: Validate Kubernetes Manifests (Kustomize)
+        run: |
+          kubectl kustomize k8s/ > /dev/null
+          echo "✅ Kubernetes manifests successfully validated."
+
   deploy:
     name: 🚀 Deploy Bot Services (${{ inputs.bot_instance || 'all' }})
     needs: validate-and-test
@@ -92,7 +99,7 @@ jobs:
 
       # --- Strategy: Docker Compose Local/CI Build ---
       - name: Build & Test Docker Image
-        if: ${{ inputs.deploy_strategy == 'docker-compose' }}
+        if: ${{ inputs.deploy_strategy == 'docker-compose-ci' }}
         run: |
           echo "🐳 Building Docker image for commit ${{ github.sha }}..."
           docker build -t telegram-bots-platform:${{ github.sha }} .
@@ -103,9 +110,28 @@ jobs:
           echo "🚀 Validating docker-compose.yml config..."
           docker compose config
 
-      # --- Strategy: SSH Remote Deployment ---
-      - name: SSH Remote Deploy to Server
-        if: ${{ inputs.deploy_strategy == 'ssh-remote' || inputs.deploy_strategy == '' || github.event_name == 'push' }}
+      # --- Strategy: Kubernetes (k3s) Remote Deployment ---
+      - name: Deploy to Kubernetes Cluster (k3s)
+        if: ${{ inputs.deploy_strategy == 'k8s-remote' || inputs.deploy_strategy == '' || github.event_name == 'push' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/telegram-bots || exit 1
+            git pull origin main
+
+            TARGET="${{ inputs.bot_instance || 'all' }}"
+            echo "Deploying bot service target to Kubernetes (k3s): $TARGET"
+
+            # Execute deploy script
+            chmod +x scripts/deploy_k8s.sh
+            ./scripts/deploy_k8s.sh "$TARGET"
+
+      # --- Strategy: Legacy Docker Compose SSH Remote Deployment ---
+      - name: Legacy Docker Compose Remote Deploy
+        if: ${{ inputs.deploy_strategy == 'ssh-remote-docker-compose' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -119,7 +145,7 @@ jobs:
             docker network create telegram_net 2>/dev/null || true
 
             TARGET="${{ inputs.bot_instance || 'all' }}"
-            echo "Deploying bot service target: $TARGET"
+            echo "Deploying bot service target (Docker Compose): $TARGET"
 
             if [ "$TARGET" = "all" ] || [ -z "$TARGET" ]; then
               docker compose up -d --build --remove-orphans

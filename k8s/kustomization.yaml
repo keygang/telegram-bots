@@ -6,11 +6,11 @@ namespace: telegram-bots
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
   - redis-deployment.yaml
   - webhook-server-deployment.yaml
   - ai-worker-deployment.yaml
-  - bot-deployment.yaml
+  - image-bot-deployment.yaml
+  - admin-bot-deployment.yaml
 
 labels:
   - pairs:

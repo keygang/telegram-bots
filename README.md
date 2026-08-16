@@ -2,7 +2,8 @@
 
 A modular, production-ready platform for deploying Telegram AI bots with **OpenRouter / LiteLLM**, **Telegram Stars (XTR)** monetization, and a full **Grafana Observability Stack** (Prometheus, Loki, Promtail).
 
-> 📐 **Architecture & System Design**: See [docs/SYSTEM_ARCHITECTURE_DIAGRAMS.md](file:///Users/stasbokun/prog/telegram-bots/docs/SYSTEM_ARCHITECTURE_DIAGRAMS.md) for full interactive Mermaid diagrams.
+> 📐 **Architecture & System Design**: See [docs/SYSTEM_ARCHITECTURE_DIAGRAMS.md](file:///Users/stasbokun/prog/telegram-bots/docs/SYSTEM_ARCHITECTURE_DIAGRAMS.md) for full interactive Mermaid diagrams.  
+> 🗺️ **Release Roadmap & Milestones**: See [ROADMAP.md](file:///Users/stasbokun/prog/telegram-bots/ROADMAP.md) for the complete version roadmap and release lifecycle.
 
 ---
 
