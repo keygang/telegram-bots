@@ -5,6 +5,7 @@ import pytest
 from platform_core.config import settings
 from platform_core.generators import (
     GenerationRequest,
+    GenerationStatus,
     GeneratorFactory,
     MockMediaGenerator,
     UnifiedMediaGenerator,
@@ -19,9 +20,9 @@ async def test_mock_generator_image():
     req = GenerationRequest(prompt="Cyberpunk warrior in neon city", media_type="image")
     res = await generator.generate(req)
 
-    assert res.status == "success"
-    assert res.media_bytes is not None
-    assert len(res.media_bytes) > 0
+    assert res.status == GenerationStatus.SUCCESS
+    assert len(res.media_urls) == 1
+    assert res.media_urls[0].startswith("file://")
     assert res.duration_ms >= 0
 
 
@@ -54,7 +55,7 @@ async def test_unified_generator_openrouter():
         )
         res = await unified_gen.generate(req)
 
-        assert res.status == "success"
+        assert res.status == GenerationStatus.SUCCESS
         assert res.media_urls == ["https://openrouter.ai/generated_image.png"]
         assert res.metadata["provider"] == "openrouter"
         assert res.metadata["model"] == "openrouter/google/gemini-2.5-flash-image"
@@ -89,7 +90,7 @@ async def test_unified_generator_auto_prefixes_openrouter():
         )
         res = await unified_gen.generate(req)
 
-        assert res.status == "success"
+        assert res.status == GenerationStatus.SUCCESS
         assert res.metadata["model"] == "openrouter/google/imagen-3-fast"
         mock_aimage_gen.assert_called_once_with(
             model="openrouter/google/imagen-3-fast",
@@ -128,7 +129,26 @@ async def test_unified_generator_chat_completion_fallback():
         )
         res = await unified_gen.generate(req)
 
-        assert res.status == "success"
-        assert res.media_bytes is not None
+        assert res.status == GenerationStatus.SUCCESS
+        assert len(res.media_urls) == 1
+        assert res.media_urls[0].startswith("file://")
         assert res.metadata["model"] == "openrouter/google/gemini-2.5-flash-image"
         mock_acompletion.assert_called_once()
+
+
+def test_media_storage_manager(tmp_path):
+    from aiogram.types import FSInputFile, URLInputFile
+
+    from platform_core.storage.media import MediaStorageManager
+
+    storage = MediaStorageManager(base_dir=tmp_path)
+    sample_data = b"fake_jpeg_image_binary_data"
+    file_url = storage.save_bytes(sample_data, extension="jpg")
+
+    assert file_url.startswith("file://")
+
+    input_file = MediaStorageManager.get_input_file(file_url)
+    assert isinstance(input_file, FSInputFile)
+
+    web_input = MediaStorageManager.get_input_file("https://example.com/image.png")
+    assert isinstance(web_input, URLInputFile)

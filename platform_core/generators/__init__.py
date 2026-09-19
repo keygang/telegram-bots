@@ -3,6 +3,7 @@ from .base import (
     BaseMediaGenerator,
     GenerationRequest,
     GenerationResponse,
+    GenerationStatus,
 )
 from .factory import GeneratorFactory
 from .mock import MockMediaGenerator
@@ -13,6 +14,7 @@ __all__ = [
     "BaseMediaGenerator",
     "GenerationRequest",
     "GenerationResponse",
+    "GenerationStatus",
     "GeneratorFactory",
     "MockMediaGenerator",
     "UnifiedMediaGenerator",

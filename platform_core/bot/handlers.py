@@ -9,7 +9,7 @@ from typing import Any
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message
 
 from platform_core.bot.keyboards import (
     get_cancel_keyboard,
@@ -29,11 +29,17 @@ from platform_core.events import (
     MessageSentEvent,
     get_tracker,
 )
-from platform_core.generators import DEFAULT_AVAILABLE_MODELS, GenerationRequest, GeneratorFactory
+from platform_core.generators import (
+    DEFAULT_AVAILABLE_MODELS,
+    GenerationRequest,
+    GenerationStatus,
+    GeneratorFactory,
+)
 from platform_core.i18n import SUPPORTED_LANGUAGES, i18n
 from platform_core.payments.packages import STAR_PACKAGES
 from platform_core.presets import preset_manager
 from platform_core.queue import GenerationJob, task_broker
+from platform_core.storage.media import MediaStorageManager
 
 logger = logging.getLogger(__name__)
 core_router = Router(name="core_router")
@@ -133,30 +139,18 @@ async def run_generation_job(
     res = await generator.generate(req)
     duration_ms = res.duration_ms or int((time.time() - start_time) * 1000)
 
-    if res.status == "success":
+    if res.status == GenerationStatus.SUCCESS and res.media_urls:
         # Deliver generated result
-        if res.media_bytes:
-            input_file = BufferedInputFile(
-                res.media_bytes, filename=f"generation_{int(time.time())}.jpg"
-            )
-            await bot.send_photo(
-                chat_id=chat_id,
-                photo=input_file,
-                caption=gettext(
-                    "generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0
-                ),
-                parse_mode="Markdown",
-            )
-        elif res.media_urls:
-            first_url = res.media_urls[0]
-            await bot.send_photo(
-                chat_id=chat_id,
-                photo=first_url,
-                caption=gettext(
-                    "generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0
-                ),
-                parse_mode="Markdown",
-            )
+        first_url = res.media_urls[0]
+        input_file = MediaStorageManager.get_input_file(first_url)
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=input_file,
+            caption=gettext(
+                "generation_complete", prompt=prompt[:100], latency=duration_ms / 1000.0
+            ),
+            parse_mode="Markdown",
+        )
 
         with contextlib.suppress(Exception):
             await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)

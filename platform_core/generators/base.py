@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -10,6 +11,13 @@ DEFAULT_AVAILABLE_MODELS: list[str] = [
     "stabilityai/stable-diffusion-3.5-large",
     "recraft-ai/recraft-v3",
 ]
+
+
+class GenerationStatus(StrEnum):
+    """Enumeration of possible media generation outcomes."""
+
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 class GenerationRequest(BaseModel):
@@ -29,9 +37,8 @@ class GenerationRequest(BaseModel):
 class GenerationResponse(BaseModel):
     """Standardized response from any media generation provider."""
 
-    status: str = "success"  # "success" or "failed"
+    status: GenerationStatus = GenerationStatus.SUCCESS
     media_urls: list[str] = Field(default_factory=list)
-    media_bytes: bytes | None = None
     duration_ms: int = 0
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

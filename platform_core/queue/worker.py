@@ -5,13 +5,13 @@ import logging
 import time
 
 from aiogram import Bot
-from aiogram.types import BufferedInputFile, URLInputFile
 
 from platform_core.db import BotEvent, GenerationLog, db
-from platform_core.generators.base import GenerationRequest
+from platform_core.generators.base import GenerationRequest, GenerationStatus
 from platform_core.generators.factory import GeneratorFactory
 from platform_core.metrics.prometheus import record_prometheus_generation
 from platform_core.queue.broker import GenerationJob, TaskQueueBroker, task_broker
+from platform_core.storage.media import MediaStorageManager
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +93,10 @@ class AIWorkerPool:
             res = await generator.generate(gen_req)
             elapsed_ms = res.duration_ms or int((time.time() - start_time) * 1000)
 
-            if res.status == "success" and (res.media_urls or res.media_bytes):
+            if res.status == GenerationStatus.SUCCESS and res.media_urls:
                 caption = f"✨ *{job.prompt}*"
-
-                if res.media_bytes:
-                    media_input = BufferedInputFile(res.media_bytes, filename="generated.png")
-                    media_url_logged = "bytes://generated.png"
-                else:
-                    media_input = URLInputFile(res.media_urls[0])
-                    media_url_logged = res.media_urls[0]
+                media_url_logged = res.media_urls[0]
+                media_input = MediaStorageManager.get_input_file(media_url_logged)
 
                 # Send media to user
                 if job.media_type == "video":

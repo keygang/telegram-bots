@@ -35,7 +35,7 @@ The platform includes a pre-configured, production-grade observability stack bui
 
 - **Multi-Instance Support**: Define and launch separate bot instances (e.g. Image Generators, Admin Bot) using simple YAML files in `instances/`.
 - **Unified AI Generation Engine**: Powered by OpenRouter / LiteLLM with automatic fallback from `aimage_generation` to `acompletion` for multimodal vision/image models (e.g., Gemini 2.5 Flash, Gemini 3.1 Flash, FLUX, Recraft, Imagen 3).
-- **Binary & URL Media Handling**: Native support for both remote image URLs (`media_urls`) and raw base64 byte streams (`media_bytes` / `BufferedInputFile`).
+- **Unified URL Media Handling**: Uniform support for generated media via `media_urls`, automatically persisting local binary/mock outputs and provider base64 streams to local/remote storage URLs (`MediaStorageManager`).
 - **Telegram Stars Monetization**: Automatic daily free credit distribution, balance management, and `/buy` in-app star packages.
 - **Preset Engine**: Custom prompt styles (Odyssey, Anime, Cyberpunk, Renaissance, Fine Art) configurable via YAML or database.
 - **Database Options**: Support for self-hosted PostgreSQL or Cloud Supabase with user profiles, transaction history, and graceful in-memory fallback when unconfigured.

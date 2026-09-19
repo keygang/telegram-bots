@@ -8,7 +8,13 @@ from typing import Any
 import litellm
 
 from platform_core.config import settings
-from platform_core.generators.base import BaseMediaGenerator, GenerationRequest, GenerationResponse
+from platform_core.generators.base import (
+    BaseMediaGenerator,
+    GenerationRequest,
+    GenerationResponse,
+    GenerationStatus,
+)
+from platform_core.storage.media import media_storage
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +72,13 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                         urls.append(item.url)
                     elif hasattr(item, "b64_json") and item.b64_json:
                         b64_data = base64.b64decode(item.b64_json)
-                        duration_ms = int((time.time() - start_time) * 1000)
-                        return GenerationResponse(
-                            status="success",
-                            media_bytes=b64_data,
-                            duration_ms=duration_ms,
-                            metadata={"provider": "openrouter", "model": target_model},
-                        )
+                        saved_url = media_storage.save_bytes(b64_data, extension="jpg")
+                        urls.append(saved_url)
 
             if urls:
                 duration_ms = int((time.time() - start_time) * 1000)
                 return GenerationResponse(
-                    status="success",
+                    status=GenerationStatus.SUCCESS,
                     media_urls=urls,
                     duration_ms=duration_ms,
                     metadata={"provider": "openrouter", "model": target_model},
@@ -128,17 +129,20 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                         if url:
                             if url.startswith("data:image/"):
                                 b64_str = url.split(",", 1)[1]
+                                saved_url = media_storage.save_bytes(
+                                    base64.b64decode(b64_str), extension="jpg"
+                                )
                                 duration_ms = int((time.time() - start_time) * 1000)
                                 return GenerationResponse(
-                                    status="success",
-                                    media_bytes=base64.b64decode(b64_str),
+                                    status=GenerationStatus.SUCCESS,
+                                    media_urls=[saved_url],
                                     duration_ms=duration_ms,
                                     metadata={"provider": "openrouter", "model": target_model},
                                 )
                             elif url.startswith("http"):
                                 duration_ms = int((time.time() - start_time) * 1000)
                                 return GenerationResponse(
-                                    status="success",
+                                    status=GenerationStatus.SUCCESS,
                                     media_urls=[url],
                                     duration_ms=duration_ms,
                                     metadata={"provider": "openrouter", "model": target_model},
@@ -148,10 +152,13 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                 content = msg.content or ""
                 match = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", content)
                 if match:
+                    saved_url = media_storage.save_bytes(
+                        base64.b64decode(match.group(1)), extension="jpg"
+                    )
                     duration_ms = int((time.time() - start_time) * 1000)
                     return GenerationResponse(
-                        status="success",
-                        media_bytes=base64.b64decode(match.group(1)),
+                        status=GenerationStatus.SUCCESS,
+                        media_urls=[saved_url],
                         duration_ms=duration_ms,
                         metadata={"provider": "openrouter", "model": target_model},
                     )
@@ -160,7 +167,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
                 if url_match:
                     duration_ms = int((time.time() - start_time) * 1000)
                     return GenerationResponse(
-                        status="success",
+                        status=GenerationStatus.SUCCESS,
                         media_urls=[url_match.group(0)],
                         duration_ms=duration_ms,
                         metadata={"provider": "openrouter", "model": target_model},
@@ -173,7 +180,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
             )
             duration_ms = int((time.time() - start_time) * 1000)
             return GenerationResponse(
-                status="failed",
+                status=GenerationStatus.FAILED,
                 error_message=str(e),
                 duration_ms=duration_ms,
                 metadata={"provider": "openrouter", "model": target_model},
@@ -181,7 +188,7 @@ class UnifiedMediaGenerator(BaseMediaGenerator):
 
         duration_ms = int((time.time() - start_time) * 1000)
         return GenerationResponse(
-            status="failed",
+            status=GenerationStatus.FAILED,
             error_message=f"No image data returned from provider for model '{target_model}'",
             duration_ms=duration_ms,
             metadata={"provider": "openrouter", "model": target_model},

@@ -4,7 +4,13 @@ import time
 
 from PIL import Image, ImageDraw
 
-from platform_core.generators.base import BaseMediaGenerator, GenerationRequest, GenerationResponse
+from platform_core.generators.base import (
+    BaseMediaGenerator,
+    GenerationRequest,
+    GenerationResponse,
+    GenerationStatus,
+)
+from platform_core.storage.media import media_storage
 
 
 class MockMediaGenerator(BaseMediaGenerator):
@@ -50,12 +56,12 @@ class MockMediaGenerator(BaseMediaGenerator):
         img.save(buffer, format="JPEG", quality=85)
         image_bytes = buffer.getvalue()
 
+        media_url = media_storage.save_bytes(image_bytes, extension="jpg", filename_prefix="mock")
         duration_ms = int((time.time() - start_time) * 1000)
 
         return GenerationResponse(
-            status="success",
-            media_bytes=image_bytes,
-            media_urls=[],
+            status=GenerationStatus.SUCCESS,
+            media_urls=[media_url],
             duration_ms=duration_ms,
             metadata={
                 "provider": "mock",
