@@ -1,18 +1,6 @@
 from typing import Any
 
-from aiogram.fsm.state import State, StatesGroup
 from pydantic import BaseModel, Field
-
-
-class GenerationStates(StatesGroup):
-    """
-    Finite State Machine (FSM) states for media generation workflows.
-    """
-
-    selecting_preset = State()
-    waiting_for_photo = State()
-    entering_custom_prompt = State()
-    generating = State()
 
 
 class GenerationStateData(BaseModel):
@@ -37,3 +25,6 @@ class GenerationStateData(BaseModel):
             val = getattr(self, item)
             return val if val is not None else default
         return self.extra_data.get(item, default)
+
+
+__all__ = ["GenerationStateData"]

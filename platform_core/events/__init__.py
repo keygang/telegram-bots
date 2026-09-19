@@ -6,7 +6,7 @@ from .error import ErrorEvent
 from .generation import GenerationEvent
 from .message_sent import MessageSentEvent
 from .payment import PaymentEvent
-from .tracker import EventTracker, get_tracker
+from .tracker import EventTracker, flush_events, get_tracker, shutdown_event_tracker
 
 __all__ = [
     "BaseEvent",
@@ -18,5 +18,8 @@ __all__ = [
     "GenerationEvent",
     "MessageSentEvent",
     "PaymentEvent",
+    "flush_events",
     "get_tracker",
+    "shutdown_event_tracker",
 ]
+

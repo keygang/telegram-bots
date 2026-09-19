@@ -1,4 +1,13 @@
-from .handlers import core_router
+from .handlers import (
+    core_router,
+    help_router,
+    menu_router,
+    models_router,
+    photo_router,
+    presets_router,
+    prompt_router,
+    settings_router,
+)
 from .keyboards import (
     get_language_keyboard,
     get_main_action_keyboard,
@@ -23,4 +32,11 @@ __all__ = [
     "get_presets_keyboard",
     "get_settings_keyboard",
     "get_star_packages_keyboard",
+    "help_router",
+    "menu_router",
+    "models_router",
+    "photo_router",
+    "presets_router",
+    "prompt_router",
+    "settings_router",
 ]

@@ -1,4 +1,8 @@
+import atexit
+from collections import defaultdict
 import logging
+import threading
+from typing import Any
 
 import redis
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -13,11 +17,13 @@ from platform_core.config import settings
 
 __all__ = [
     "CONTENT_TYPE_LATEST",
+    "flush_metrics_to_redis",
     "get_prometheus_metrics",
     "get_redis_client",
     "record_prometheus_event",
     "record_prometheus_generation",
     "record_prometheus_stars",
+    "shutdown_metrics",
     "update_prometheus_queue",
 ]
 
@@ -59,9 +65,22 @@ TELEGRAM_QUEUE_PENDING_TASKS = Gauge(
 
 _redis_client: redis.Redis | None = None
 
+# In-Memory Accumulator for non-blocking telemetry sync
+_metrics_lock = threading.Lock()
+_pending_events: dict[str, int] = defaultdict(int)
+_pending_durations_sum: dict[str, float] = defaultdict(float)
+_pending_durations_count: dict[str, int] = defaultdict(int)
+_pending_durations_buckets: dict[str, int] = defaultdict(int)
+_pending_generations: dict[str, int] = defaultdict(int)
+_pending_stars: dict[str, int] = defaultdict(int)
+_pending_queue: int | None = None
+
+_flusher_thread: threading.Thread | None = None
+_flusher_stop_event = threading.Event()
+
 
 def get_redis_client() -> redis.Redis | None:
-    """Returns a cached synchronous Redis client for low-latency metric increments."""
+    """Returns a cached synchronous Redis client for background metric synchronization."""
     global _redis_client
     if _redis_client is not None:
         return _redis_client
@@ -80,10 +99,103 @@ def get_redis_client() -> redis.Redis | None:
         return None
 
 
+def _ensure_flusher_thread_started() -> None:
+    """Ensures the background flusher daemon thread is running."""
+    global _flusher_thread
+    if _flusher_thread is not None and _flusher_thread.is_alive():
+        return
+    _flusher_stop_event.clear()
+    _flusher_thread = threading.Thread(
+        target=_flusher_worker,
+        name="PrometheusMetricsFlusher",
+        daemon=True,
+    )
+    _flusher_thread.start()
+
+
+def _flusher_worker() -> None:
+    """Background flusher loop running periodically."""
+    while not _flusher_stop_event.wait(timeout=1.0):
+        try:
+            flush_metrics_to_redis()
+        except Exception as e:
+            logger.debug(f"Metrics flusher worker error: {e}")
+
+
+def flush_metrics_to_redis() -> None:
+    """Flushes in-memory accumulated metrics to Redis via a pipelined batch."""
+    global _pending_queue, _pending_events, _pending_durations_sum, _pending_durations_count, _pending_durations_buckets, _pending_generations, _pending_stars
+
+    with _metrics_lock:
+        if not (
+            _pending_events
+            or _pending_durations_sum
+            or _pending_durations_count
+            or _pending_durations_buckets
+            or _pending_generations
+            or _pending_stars
+            or _pending_queue is not None
+        ):
+            return
+
+        events = _pending_events
+        durations_sum = _pending_durations_sum
+        durations_count = _pending_durations_count
+        durations_buckets = _pending_durations_buckets
+        generations = _pending_generations
+        stars = _pending_stars
+        queue_val = _pending_queue
+
+        _pending_events = defaultdict(int)
+        _pending_durations_sum = defaultdict(float)
+        _pending_durations_count = defaultdict(int)
+        _pending_durations_buckets = defaultdict(int)
+        _pending_generations = defaultdict(int)
+        _pending_stars = defaultdict(int)
+        _pending_queue = None
+
+    try:
+        r = get_redis_client()
+        if not r:
+            return
+
+        pipe = r.pipeline(transaction=False)
+        for k, count in events.items():
+            pipe.hincrby("metrics:events_total", k, count)
+        for k, val in durations_sum.items():
+            pipe.hincrbyfloat("metrics:durations_sum", k, val)
+        for k, count in durations_count.items():
+            pipe.hincrby("metrics:durations_count", k, count)
+        for k, count in durations_buckets.items():
+            pipe.hincrby("metrics:durations_buckets", k, count)
+        for k, count in generations.items():
+            pipe.hincrby("metrics:generations_total", k, count)
+        for k, count in stars.items():
+            pipe.hincrby("metrics:stars_total", k, count)
+        if queue_val is not None:
+            pipe.set("metrics:queue_pending", queue_val)
+
+        pipe.execute()
+    except Exception as e:
+        logger.debug(f"Failed to flush accumulated metrics to Redis: {e}")
+
+
+def shutdown_metrics() -> None:
+    """Gracefully flushes remaining metrics and stops background flusher."""
+    _flusher_stop_event.set()
+    flush_metrics_to_redis()
+
+
+atexit.register(shutdown_metrics)
+
+
 def record_prometheus_event(
     bot_id: str, event_type: str, event_name: str, duration_ms: float
 ) -> None:
-    """Records event count and latency in Prometheus metrics and syncs to shared Redis."""
+    """
+    Records event count and latency in Prometheus metrics and accumulates for
+    asynchronous pipelined flush to Redis. Returns immediately without blocking the event loop.
+    """
     try:
         TELEGRAM_EVENTS_TOTAL.labels(
             bot_id=bot_id,
@@ -98,67 +210,86 @@ def record_prometheus_event(
         logger.warning(f"Failed to record Prometheus event metrics: {e}")
 
     try:
-        r = get_redis_client()
-        if r:
-            duration_s = duration_ms / 1000.0
-            r.hincrby("metrics:events_total", f"{bot_id}:{event_type}:{event_name}", 1)
-            r.hincrbyfloat("metrics:durations_sum", f"{bot_id}:{event_type}", duration_s)
-            r.hincrby("metrics:durations_count", f"{bot_id}:{event_type}", 1)
+        duration_s = duration_ms / 1000.0
+        with _metrics_lock:
+            _pending_events[f"{bot_id}:{event_type}:{event_name}"] += 1
+            _pending_durations_sum[f"{bot_id}:{event_type}"] += duration_s
+            _pending_durations_count[f"{bot_id}:{event_type}"] += 1
             for b in BUCKETS:
                 if duration_s <= b:
-                    r.hincrby("metrics:durations_buckets", f"{bot_id}:{event_type}:{b}", 1)
-            r.hincrby("metrics:durations_buckets", f"{bot_id}:{event_type}:+Inf", 1)
+                    _pending_durations_buckets[f"{bot_id}:{event_type}:{b}"] += 1
+            _pending_durations_buckets[f"{bot_id}:{event_type}:+Inf"] += 1
+        _ensure_flusher_thread_started()
     except Exception as e:
-        logger.debug(f"Failed to sync event metrics to Redis: {e}")
+        logger.debug(f"Failed to buffer event metrics for Redis: {e}")
 
 
-def record_prometheus_generation(bot_id: str, status: str, model_name: str = "default") -> None:
-    """Records AI generation status in Prometheus metrics and syncs to shared Redis."""
+def record_prometheus_generation(
+    bot_id: str,
+    status: str = "success",
+    model_name: str = "default",
+    model: str | None = None,
+    duration_ms: float | None = None,
+    **kwargs: Any,
+) -> None:
+    """
+    Records AI generation status in Prometheus metrics and accumulates for
+    asynchronous pipelined flush to Redis. Returns immediately without blocking the event loop.
+    """
+    effective_model = model or model_name or "default"
     try:
         TELEGRAM_GENERATIONS_TOTAL.labels(
             bot_id=bot_id,
             status=status,
-            model_name=model_name,
+            model_name=effective_model,
         ).inc()
     except Exception as e:
         logger.warning(f"Failed to record Prometheus generation metrics: {e}")
 
     try:
-        r = get_redis_client()
-        if r:
-            r.hincrby("metrics:generations_total", f"{bot_id}:{status}:{model_name}", 1)
+        with _metrics_lock:
+            _pending_generations[f"{bot_id}:{status}:{effective_model}"] += 1
+        _ensure_flusher_thread_started()
     except Exception as e:
-        logger.debug(f"Failed to sync generation metrics to Redis: {e}")
+        logger.debug(f"Failed to buffer generation metrics for Redis: {e}")
 
 
 def record_prometheus_stars(bot_id: str, amount: int = 1) -> None:
-    """Records Telegram Stars transaction in Prometheus metrics and syncs to shared Redis."""
+    """
+    Records Telegram Stars transaction in Prometheus metrics and accumulates for
+    asynchronous pipelined flush to Redis. Returns immediately without blocking the event loop.
+    """
     try:
         TELEGRAM_STARS_TOTAL.labels(bot_id=bot_id).inc(amount)
     except Exception as e:
         logger.warning(f"Failed to record Prometheus stars metrics: {e}")
 
     try:
-        r = get_redis_client()
-        if r:
-            r.hincrby("metrics:stars_total", bot_id, amount)
+        with _metrics_lock:
+            _pending_stars[bot_id] += amount
+        _ensure_flusher_thread_started()
     except Exception as e:
-        logger.debug(f"Failed to sync stars metrics to Redis: {e}")
+        logger.debug(f"Failed to buffer stars metrics for Redis: {e}")
 
 
 def update_prometheus_queue(pending_count: int) -> None:
-    """Updates pending task queue count gauge and syncs to shared Redis."""
+    """
+    Updates pending task queue count gauge and accumulates for asynchronous
+    pipelined flush to Redis. Returns immediately without blocking the event loop.
+    """
+    global _pending_queue
     try:
         TELEGRAM_QUEUE_PENDING_TASKS.set(pending_count)
     except Exception as e:
         logger.warning(f"Failed to update Prometheus queue metrics: {e}")
 
     try:
-        r = get_redis_client()
-        if r:
-            r.set("metrics:queue_pending", pending_count)
+        with _metrics_lock:
+            _pending_queue = pending_count
+        _ensure_flusher_thread_started()
     except Exception as e:
-        logger.debug(f"Failed to sync queue metric to Redis: {e}")
+        logger.debug(f"Failed to buffer queue metric for Redis: {e}")
+
 
 
 def get_prometheus_metrics() -> bytes:
@@ -167,6 +298,11 @@ def get_prometheus_metrics() -> bytes:
     If Redis is available and has recorded data from distributed bots/workers,
     aggregates and exposes cluster-wide metrics. Otherwise falls back to in-memory registry.
     """
+    try:
+        flush_metrics_to_redis()
+    except Exception as e:
+        logger.debug(f"Pre-scrape metric flush error: {e}")
+
     try:
         r = get_redis_client()
         if r:

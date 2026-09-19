@@ -97,14 +97,16 @@ def test_generation_job_pydantic_json_serialization():
     job = GenerationJob(
         job_id="job_pydantic_99",
         bot_id="image_bot_1",
-        bot_token="12345:TOKEN",
         user_id=42,
         chat_id=100,
         status_message_id=200,
         prompt="A vibrant synthwave sunset over mountains",
+        preset_id="synthwave",
+        photo_path="/tmp/ref.jpg",
         model_name="google/gemini-2.5-flash-image",
         media_type="image",
         cost=2,
+        retry_count=1,
         extra_params={"cfg_scale": 7.5, "seed": 12345},
     )
 
@@ -113,6 +115,10 @@ def test_generation_job_pydantic_json_serialization():
     assert isinstance(json_str, str)
     parsed_json = json.loads(json_str)
     assert parsed_json["job_id"] == "job_pydantic_99"
+    assert parsed_json["preset_id"] == "synthwave"
+    assert parsed_json["photo_path"] == "/tmp/ref.jpg"
+    assert parsed_json["retry_count"] == 1
+    assert "bot_token" not in parsed_json
     assert parsed_json["cost"] == 2
     assert parsed_json["extra_params"]["seed"] == 12345
 

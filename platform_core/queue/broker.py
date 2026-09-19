@@ -24,16 +24,17 @@ class GenerationJob(BaseModel):
 
     job_id: str
     bot_id: str
-    bot_token: str
     user_id: int
     chat_id: int
     status_message_id: int
     prompt: str
     model_name: str
+    preset_id: str | None = None
     media_type: str = "image"  # "image" or "video"
     negative_prompt: str | None = None
     cost: int = 1
-    reference_photo_b64: str | None = None
+    photo_path: str | None = None
+    retry_count: int = 0
     extra_params: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     stream_message_id: str | None = None  # Redis Stream entry ID for explicit XACK
@@ -50,7 +51,7 @@ class TaskQueueBroker:
     """
     Production-grade Redis Streams task queue broker with consumer groups,
     explicit message acknowledgments (XACK), auto-claim for worker crash recovery,
-    and transparent in-memory fallback.
+    poison-pill Dead Letter Queue (DLQ) routing, and transparent in-memory fallback.
     """
 
     def __init__(
@@ -58,10 +59,12 @@ class TaskQueueBroker:
         redis_url: str | None = None,
         queue_name: str | None = None,
         group_name: str = "telegram_workers_group",
+        dlq_name: str = "telegram_tasks:dlq",
     ):
         self.redis_url = redis_url or settings.REDIS_URL
         self.stream_key = queue_name or settings.QUEUE_NAME or "telegram_tasks:stream"
         self.group_name = group_name
+        self.dlq_name = dlq_name
         self._redis_client: Any | None = None
         self._fallback_queue: asyncio.Queue = asyncio.Queue()
         self._use_fallback = False
@@ -129,7 +132,7 @@ class TaskQueueBroker:
     async def dequeue_job(
         self, consumer_name: str = "worker_1", timeout: float = 2.0
     ) -> GenerationJob | None:
-        """Pops a generation job from Redis Stream using consumer groups and auto-claim."""
+        """Pops a generation job from Redis Stream using consumer groups and auto-claim with DLQ protection."""
         client = await self._get_client()
 
         if client:
@@ -142,14 +145,76 @@ class TaskQueueBroker:
                         consumername=consumer_name,
                         min_idle_time=60000,
                         start_id="0-0",
-                        count=1,
+                        count=10,
                     )
                     if claimed and len(claimed) > 1 and claimed[1]:
-                        msg_id, fields = claimed[1][0]
-                        if fields and "payload" in fields:
-                            job = GenerationJob.from_json(fields["payload"])
+                        for msg_id, fields in claimed[1]:
+                            if not fields or "payload" not in fields:
+                                continue
+                            try:
+                                job = GenerationJob.from_json(fields["payload"])
+                            except Exception as parse_err:
+                                logger.error(
+                                    f"Corrupted job payload for {msg_id}: {parse_err}. Acking and moving to DLQ."
+                                )
+                                with contextlib.suppress(Exception):
+                                    await client.xadd(
+                                        self.dlq_name,
+                                        {
+                                            "payload": str(fields.get("payload", "")),
+                                            "original_stream_id": msg_id,
+                                            "error_reason": f"Corrupted payload: {parse_err}",
+                                        },
+                                    )
+                                    await client.xack(self.stream_key, self.group_name, msg_id)
+                                    await client.xdel(self.stream_key, msg_id)
+                                continue
+
                             job.stream_message_id = msg_id
-                            logger.info(f"Auto-claimed abandoned job {job.job_id} ({msg_id})")
+
+                            # Query Redis PEL to check message delivery counter
+                            delivery_count = job.retry_count + 1
+                            with contextlib.suppress(Exception):
+                                pending_info = await client.xpending_range(
+                                    name=self.stream_key,
+                                    groupname=self.group_name,
+                                    min=msg_id,
+                                    max=msg_id,
+                                    count=1,
+                                )
+                                if pending_info:
+                                    item = pending_info[0]
+                                    if isinstance(item, dict):
+                                        cnt = item.get("delivery_count", item.get("times_delivered", 0))
+                                        delivery_count = max(delivery_count, int(cnt))
+                                    elif isinstance(item, (list, tuple)) and len(item) >= 4:
+                                        delivery_count = max(delivery_count, int(item[3]))
+
+                            job.retry_count = delivery_count
+
+                            # Poison pill / DLQ handling: attempted >= 3 times
+                            if delivery_count >= 3:
+                                logger.critical(
+                                    f"🚨 Poison pill detected! Job {job.job_id} ({msg_id}) attempted {delivery_count} times. "
+                                    f"Moving to dead-letter stream '{self.dlq_name}' and removing from '{self.stream_key}'."
+                                )
+                                with contextlib.suppress(Exception):
+                                    await client.xadd(
+                                        self.dlq_name,
+                                        {
+                                            "payload": job.to_json(),
+                                            "original_stream_id": msg_id,
+                                            "retry_count": str(delivery_count),
+                                            "error_reason": "Max attempts (>= 3) exceeded",
+                                        },
+                                    )
+                                    await client.xack(self.stream_key, self.group_name, msg_id)
+                                    await client.xdel(self.stream_key, msg_id)
+                                continue
+
+                            logger.info(
+                                f"Auto-claimed abandoned job {job.job_id} ({msg_id}) [attempt {delivery_count}]"
+                            )
                             return job
 
                 # 2. Read new unread messages for this consumer group
@@ -167,6 +232,7 @@ class TaskQueueBroker:
                             if fields and "payload" in fields:
                                 job = GenerationJob.from_json(fields["payload"])
                                 job.stream_message_id = msg_id
+                                job.retry_count = 1
                                 return job
                 return None
             except Exception as e:
@@ -192,6 +258,33 @@ class TaskQueueBroker:
                 logger.warning(f"Failed to ack job {job.job_id}: {e}")
                 return False
         return True
+
+    async def move_to_dlq(
+        self, job: GenerationJob, error_reason: str = "Max attempts exceeded"
+    ) -> bool:
+        """Moves a poison-pill or repeatedly failing job to dead-letter queue (DLQ) and removes from main stream."""
+        client = await self._get_client()
+        if client and job.stream_message_id:
+            try:
+                await client.xadd(
+                    self.dlq_name,
+                    {
+                        "payload": job.to_json(),
+                        "original_stream_id": job.stream_message_id,
+                        "retry_count": str(job.retry_count),
+                        "error_reason": error_reason,
+                    },
+                )
+                await client.xack(self.stream_key, self.group_name, job.stream_message_id)
+                await client.xdel(self.stream_key, job.stream_message_id)
+                logger.critical(
+                    f"🚨 Moved job {job.job_id} ({job.stream_message_id}) to DLQ '{self.dlq_name}': {error_reason}"
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to move job {job.job_id} to DLQ: {e}")
+                return False
+        return False
 
     async def get_queue_length(self) -> int:
         """Returns current pending queue length."""

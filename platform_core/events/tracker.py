@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
-from platform_core.db import AnalyticsEvent, GenerationLog, db
+from platform_core.db import AnalyticsEvent, GenerationLog, db, register_flush_callback
 from platform_core.events.base import BaseEvent
 from platform_core.metrics.prometheus import (
     record_prometheus_event,
@@ -16,12 +17,148 @@ logger = logging.getLogger(__name__)
 
 TEvent = TypeVar("TEvent", bound=BaseEvent)
 
+BATCH_SIZE = 50
+FLUSH_INTERVAL = 2.0
+
+_event_queue: asyncio.Queue[AnalyticsEvent] | None = None
+_flush_task: asyncio.Task[None] | None = None
+_current_loop: asyncio.AbstractEventLoop | None = None
+
+
+def get_event_queue() -> asyncio.Queue[AnalyticsEvent]:
+    """Returns or initializes the asyncio.Queue for analytics events on the running event loop."""
+    global _event_queue, _current_loop
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _event_queue is None or (_current_loop is not None and _current_loop != current_loop):
+        _event_queue = asyncio.Queue()
+        _current_loop = current_loop
+    return _event_queue
+
+
+def _ensure_flush_task() -> None:
+    """Ensures the background flush loop task is active."""
+    global _flush_task
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    if _flush_task is None or _flush_task.done() or _flush_task.get_loop() != loop:
+        _flush_task = loop.create_task(_flush_loop(), name="analytics_event_flush_loop")
+
+
+async def _flush_batch(batch: list[AnalyticsEvent]) -> None:
+    """Flushes a batch of events to the database."""
+    if not batch:
+        return
+    try:
+        await db.track_events_batch(batch)
+    except Exception as e:
+        logger.error(f"Failed to persist batch of {len(batch)} events: {e}")
+
+
+async def _flush_loop() -> None:
+    """
+    Background worker loop that flushes events in batches using db.track_events_batch()
+    every 2 seconds or when the batch reaches 50 events.
+    """
+    queue = get_event_queue()
+    batch: list[AnalyticsEvent] = []
+
+    while True:
+        try:
+            # 1. Wait for the first item to arrive (0% CPU when idle)
+            first_event = await queue.get()
+            batch.append(first_event)
+            queue.task_done()
+
+            # 2. Drain any already-pending events up to BATCH_SIZE without delay
+            while len(batch) < BATCH_SIZE and not queue.empty():
+                try:
+                    batch.append(queue.get_nowait())
+                    queue.task_done()
+                except (asyncio.QueueEmpty, ValueError):
+                    break
+
+            # 3. If batch is still less than BATCH_SIZE, wait up to FLUSH_INTERVAL
+            deadline = time.monotonic() + FLUSH_INTERVAL
+            while len(batch) < BATCH_SIZE:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=timeout)
+                    batch.append(event)
+                    queue.task_done()
+                except asyncio.TimeoutError:
+                    break
+
+            # 4. Flush the batch
+            if batch:
+                await _flush_batch(batch)
+                batch = []
+
+        except asyncio.CancelledError:
+            # On shutdown / cancellation, drain remaining queue and flush
+            while not queue.empty():
+                try:
+                    batch.append(queue.get_nowait())
+                    queue.task_done()
+                except (asyncio.QueueEmpty, ValueError):
+                    break
+            if batch:
+                await _flush_batch(batch)
+            raise
+        except Exception as e:
+            logger.error(f"Error in event tracker flush loop: {e}")
+            if batch:
+                await _flush_batch(batch)
+                batch = []
+            await asyncio.sleep(0.5)
+
+
+async def flush_events() -> None:
+    """Flushes all currently buffered events immediately."""
+    queue = get_event_queue()
+    batch: list[AnalyticsEvent] = []
+    while not queue.empty():
+        try:
+            batch.append(queue.get_nowait())
+            queue.task_done()
+        except (asyncio.QueueEmpty, ValueError):
+            break
+    if batch:
+        await _flush_batch(batch)
+
+
+async def shutdown_event_tracker() -> None:
+    """Gracefully flushes remaining events and cancels the background flush task."""
+    global _flush_task
+    await flush_events()
+    if _flush_task and not _flush_task.done():
+        _flush_task.cancel()
+        try:
+            await _flush_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning(f"Error during event tracker shutdown: {e}")
+        _flush_task = None
+
+
+# Register flush callback with db pre-query hook
+register_flush_callback(flush_events)
+
 
 class EventTracker:
     """
     Modular Event Tracker that receives typed BaseEvent data classes,
-    performs standard serialization, and dispatches them to the PostgreSQL/PostHog
-    event store and Prometheus telemetry.
+    performs standard serialization, and dispatches them to an asynchronous
+    batch buffer and Prometheus telemetry.
     """
 
     def __init__(
@@ -43,9 +180,18 @@ class EventTracker:
             default_properties=merged,
         )
 
+    async def flush(self) -> None:
+        """Immediately flushes any buffered events to the database."""
+        await flush_events()
+
+    async def aclose(self) -> None:
+        """Flushes events and cleans up."""
+        await flush_events()
+
     async def track(self, event: BaseEvent) -> AnalyticsEvent:
         """
         Record any typed event dataclass that inherits from BaseEvent.
+        Places event into an in-memory queue for batched non-blocking database persistence.
         """
         if not event.bot_id:
             event.bot_id = self.bot_id
@@ -61,7 +207,7 @@ class EventTracker:
         if self.default_properties:
             analytics_event.properties = {**self.default_properties, **analytics_event.properties}
 
-        # 1. Dispatch to Prometheus telemetry
+        # 1. Dispatch to Prometheus telemetry (non-blocking in-memory accumulator)
         try:
             from platform_core.events.generation import GenerationEvent
             from platform_core.events.payment import PaymentEvent
@@ -100,11 +246,13 @@ class EventTracker:
         except Exception as e:
             logger.debug(f"Prometheus metric error: {e}")
 
-        # 2. Persist event to Database / in-memory store
+        # 2. Persist event to Database via non-blocking asynchronous batch buffer
         try:
-            await db.track_event(analytics_event)
+            queue = get_event_queue()
+            _ensure_flush_task()
+            queue.put_nowait(analytics_event)
         except Exception as e:
-            logger.error(f"Error persisting event '{event.get_event_name()}': {e}")
+            logger.error(f"Error queueing event '{event.get_event_name()}': {e}")
 
         return analytics_event
 

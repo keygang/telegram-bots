@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+_pre_query_flush_cb: Callable[[], Any] | None = None
+
+
+def register_flush_callback(cb: Callable[[], Any]) -> None:
+    """Registers a callback to flush buffered events prior to queries/reports."""
+    global _pre_query_flush_cb
+    _pre_query_flush_cb = cb
+
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -48,6 +57,7 @@ class SupabaseManager:
         self._in_memory_events: list[BotEvent] = []
         self._in_memory_analytics_events: list[AnalyticsEvent] = []
         self._in_memory_generations: list[GenerationLog] = []
+        self._balance_lock: asyncio.Lock | None = None
 
         if settings.SUPABASE_URL and settings.SUPABASE_KEY:
             is_placeholder_url = (
@@ -72,9 +82,17 @@ class SupabaseManager:
                         f"Failed to connect to Supabase ({settings.SUPABASE_URL}): {e}. Falling back to in-memory store."
                     )
 
+    @property
+    def balance_lock(self) -> asyncio.Lock:
+        """Lazy-loaded asyncio.Lock to guarantee thread-safe in-memory operations across event loops."""
+        if self._balance_lock is None:
+            self._balance_lock = asyncio.Lock()
+        return self._balance_lock
+
     async def _run_query(self, query_fn: Callable[[], T]) -> T:
         """Executes a synchronous PostgREST query function in a worker thread."""
         return await asyncio.to_thread(query_fn)
+
 
     # --- USER PROFILE OPERATIONS ---
 
@@ -245,25 +263,67 @@ class SupabaseManager:
             balance.free_credits_reset_at = now
         return balance
 
-    async def deduct_user_credit(self, user_id: int, amount: int = 1) -> bool:
-        balance = await self.get_user_balance(user_id)
-        if balance.credits_remaining < amount:
-            return False
-
-        balance.credits_remaining -= amount
+    async def get_star_transaction(self, charge_id: str) -> StarTransaction | None:
+        """Retrieves a StarTransaction by telegram_payment_charge_id."""
         if self.client:
             try:
-                await self._run_query(
+                res = await self._run_query(
                     lambda: (
-                        self.client.table("user_balances")
-                        .update({"credits_remaining": balance.credits_remaining})
-                        .eq("user_id", user_id)
+                        self.client.table("star_transactions")
+                        .select("*")
+                        .eq("telegram_payment_charge_id", charge_id)
                         .execute()
                     )
                 )
+                if res.data and len(res.data) > 0:
+                    return StarTransaction(**res.data[0])
+                return None
+            except Exception as e:
+                logger.error(f"Supabase get_star_transaction error: {e}")
+                return None
+
+        # In-memory fallback
+        async with self.balance_lock:
+            for tx in self._in_memory_transactions:
+                if tx.telegram_payment_charge_id == charge_id:
+                    return tx
+        return None
+
+    async def deduct_user_credit(self, user_id: int, amount: int = 1) -> bool:
+        """
+        Atomically deducts credit from user balance.
+        Prevents race conditions where concurrent requests could generate free content.
+        Returns True if deduction succeeded, False if insufficient credits.
+        """
+        if amount <= 0:
+            return True
+
+        if self.client:
+            try:
+                # Ensure user balance record exists and daily free credits are evaluated
+                await self.get_user_balance(user_id)
+
+                res = await self._run_query(
+                    lambda: self.client.rpc(
+                        "deduct_user_credit",
+                        {"p_user_id": user_id, "p_amount": amount},
+                    ).execute()
+                )
+                if res and res.data is True:
+                    return True
+                return False
             except Exception as e:
                 logger.error(f"Supabase deduct_user_credit error: {e}")
-        return True
+                return False
+
+        # In-memory fallback: atomic check-and-subtract guarded by asyncio.Lock
+        async with self.balance_lock:
+            balance = await self.get_user_balance(user_id)
+            if balance.credits_remaining < amount:
+                return False
+
+            balance.credits_remaining -= amount
+            return True
 
     async def add_user_credits(
         self,
@@ -273,20 +333,52 @@ class SupabaseManager:
         credits_to_add: int,
         telegram_charge_id: str,
     ) -> UserBalance:
-        balance = await self.get_user_balance(user_id)
-        balance.credits_remaining += credits_to_add
-        balance.total_stars_spent += stars_paid
-
-        transaction = StarTransaction(
-            user_id=user_id,
-            bot_id=bot_id,
-            stars_amount=stars_paid,
-            credits_added=credits_to_add,
-            telegram_payment_charge_id=telegram_charge_id,
-        )
-
+        """
+        Idempotently adds credits to user balance after Telegram Stars payment.
+        Checks if transaction with telegram_payment_charge_id already exists.
+        If it already exists, logs a warning and returns the existing UserBalance without crediting again.
+        If not, records the transaction and adds credits.
+        """
         if self.client:
             try:
+                # 1. Idempotency check: check if transaction with this charge_id already exists
+                existing = await self._run_query(
+                    lambda: (
+                        self.client.table("star_transactions")
+                        .select("id")
+                        .eq("telegram_payment_charge_id", telegram_charge_id)
+                        .execute()
+                    )
+                )
+                if existing.data and len(existing.data) > 0:
+                    logger.warning(
+                        f"Duplicate payment transaction detected for charge_id: {telegram_charge_id}. "
+                        "Returning existing balance without adding credits."
+                    )
+                    return await self.get_user_balance(user_id)
+
+                transaction = StarTransaction(
+                    user_id=user_id,
+                    bot_id=bot_id,
+                    stars_amount=stars_paid,
+                    credits_added=credits_to_add,
+                    telegram_payment_charge_id=telegram_charge_id,
+                )
+
+                # 2. Record transaction first to enforce UNIQUE index idx_star_transactions_charge_id
+                await self._run_query(
+                    lambda: (
+                        self.client.table("star_transactions")
+                        .insert(transaction.model_dump(mode="json"))
+                        .execute()
+                    )
+                )
+
+                # 3. Add credits to balance
+                balance = await self.get_user_balance(user_id)
+                balance.credits_remaining += credits_to_add
+                balance.total_stars_spent += stars_paid
+
                 await self._run_query(
                     lambda: (
                         self.client.table("user_balances")
@@ -300,20 +392,37 @@ class SupabaseManager:
                         .execute()
                     )
                 )
-
-                await self._run_query(
-                    lambda: (
-                        self.client.table("star_transactions")
-                        .insert(transaction.model_dump(mode="json"))
-                        .execute()
-                    )
-                )
+                return balance
             except Exception as e:
-                logger.error(f"Supabase add_user_credits error: {e}")
-        else:
-            self._in_memory_transactions.append(transaction)
+                logger.warning(
+                    f"Supabase add_user_credits encountered error or concurrent duplicate for {telegram_charge_id}: {e}"
+                )
+                return await self.get_user_balance(user_id)
 
-        return balance
+        # In-memory fallback: coroutine-safe idempotency check
+        async with self.balance_lock:
+            for tx in self._in_memory_transactions:
+                if tx.telegram_payment_charge_id == telegram_charge_id:
+                    logger.warning(
+                        f"Duplicate payment transaction detected for charge_id: {telegram_charge_id}. "
+                        "Returning existing balance without adding credits."
+                    )
+                    return await self.get_user_balance(user_id)
+
+            balance = await self.get_user_balance(user_id)
+            balance.credits_remaining += credits_to_add
+            balance.total_stars_spent += stars_paid
+
+            transaction = StarTransaction(
+                user_id=user_id,
+                bot_id=bot_id,
+                stars_amount=stars_paid,
+                credits_added=credits_to_add,
+                telegram_payment_charge_id=telegram_charge_id,
+            )
+            self._in_memory_transactions.append(transaction)
+            return balance
+
 
     # --- POSTHOG-STYLE ANALYTICS EVENTS ---
 
@@ -389,6 +498,15 @@ class SupabaseManager:
         for e in events:
             await self.track_event(e)
 
+    async def _flush_pending_events_if_any(self) -> None:
+        if _pre_query_flush_cb is not None:
+            try:
+                res = _pre_query_flush_cb()
+                if asyncio.iscoroutine(res):
+                    await res
+            except Exception as e:
+                logger.debug(f"Pre-query flush callback error: {e}")
+
     async def query_events(
         self,
         event: str | None = None,
@@ -403,6 +521,7 @@ class SupabaseManager:
         Query PostHog-style events with optional filtering on event type, user, bot,
         time window, and JSONB properties.
         """
+        await self._flush_pending_events_if_any()
         if self.client:
             try:
 
@@ -494,6 +613,7 @@ class SupabaseManager:
     # --- ANALYTICS SUMMARY REPORTING ---
 
     async def get_metrics_summary(self, bot_id: str | None = None) -> MetricsSummary:
+        await self._flush_pending_events_if_any()
         if self.client:
             try:
 

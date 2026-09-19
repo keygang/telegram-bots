@@ -1,11 +1,17 @@
 import asyncio
-import base64
 import contextlib
+import html
 import logging
+import os
 import time
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
+import yaml
 from aiogram import Bot
 
+from platform_core.config import settings
 from platform_core.db import BotEvent, GenerationLog, db
 from platform_core.generators.base import GenerationRequest, GenerationStatus
 from platform_core.generators.factory import GeneratorFactory
@@ -14,6 +20,58 @@ from platform_core.queue.broker import GenerationJob, TaskQueueBroker, task_brok
 from platform_core.storage.media import MediaStorageManager
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_bot_token(bot_id: str) -> str | None:
+    """
+    Resolves the Telegram Bot API token for a given bot_id.
+    Checks:
+    1. Direct environment variable (e.g. IMAGE_BOT_1_TOKEN, BOT_TOKEN_IMAGE_BOT_1, IMAGE_BOT_TOKEN).
+    2. Instance YAML file under `instances/{bot_id}.yaml`.
+    3. PlatformSettings attributes or fallbacks.
+    """
+    clean_id = bot_id.replace("-", "_").upper()
+    env_candidates = [
+        f"{clean_id}_TOKEN",
+        f"BOT_TOKEN_{clean_id}",
+        f"TELEGRAM_BOT_TOKEN_{clean_id}",
+        clean_id,
+    ]
+    for env_name in env_candidates:
+        val = os.getenv(env_name)
+        if val and ":" in val:
+            return val
+
+    # Check instance config YAML under instances/
+    try:
+        yaml_candidates = [
+            Path("instances") / f"{bot_id}.yaml",
+            Path("instances") / f"{bot_id.replace('-', '_')}.yaml",
+        ]
+        for ypath in yaml_candidates:
+            if ypath.is_file():
+                with open(ypath, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                if cfg.get("token") and ":" in str(cfg["token"]):
+                    return str(cfg["token"])
+                token_env = cfg.get("token_env")
+                if token_env:
+                    val = os.getenv(token_env)
+                    if val and ":" in val:
+                        return val
+    except Exception as e:
+        logger.debug(f"Error checking instance config for bot_id {bot_id}: {e}")
+
+    # Check PlatformSettings attributes
+    if "admin" in bot_id.lower() and getattr(settings, "ADMIN_BOT_TOKEN", None):
+        return settings.ADMIN_BOT_TOKEN
+    specific_token = getattr(settings, f"{clean_id}_TOKEN", None)
+    if specific_token and ":" in str(specific_token):
+        return specific_token
+    if getattr(settings, "IMAGE_BOT_TOKEN", None):
+        return settings.IMAGE_BOT_TOKEN
+
+    return None
 
 
 class BotPool:
@@ -67,17 +125,68 @@ class AIWorkerPool:
         logger.info(
             f"⚙️ Worker processing job [{job.job_id}] for user {job.user_id} (Model: {job.model_name})"
         )
-        bot = self.bot_pool.get_bot(job.bot_token)
+        token = resolve_bot_token(job.bot_id)
+        if not token:
+            logger.error(
+                f"❌ Cannot process job [{job.job_id}]: Telegram bot token for bot_id '{job.bot_id}' not found."
+            )
+            # Refund user credits and log generation failure
+            await db.add_user_credits(
+                user_id=job.user_id,
+                bot_id=job.bot_id,
+                stars_paid=0,
+                credits_to_add=job.cost,
+                telegram_charge_id="refund",
+            )
+            record_prometheus_generation(job.bot_id, "failed", job.model_name)
+            await db.record_event(
+                BotEvent(
+                    bot_id=job.bot_id,
+                    user_id=job.user_id,
+                    event_type="generation_failed",
+                    event_name=job.media_type,
+                    duration_ms=0,
+                )
+            )
+            await db.log_generation(
+                GenerationLog(
+                    bot_id=job.bot_id,
+                    user_id=job.user_id,
+                    model_name=job.model_name,
+                    prompt=job.prompt,
+                    preset_id=job.preset_id,
+                    status="failed",
+                    duration_ms=0,
+                    error_message=f"Bot token not found for bot_id: {job.bot_id}",
+                )
+            )
+            await self.broker.ack_job(job)
+            return
+
+        bot = self.bot_pool.get_bot(token)
         start_time = time.time()
 
         try:
-            # Decode reference photo if present
+            # Load reference photo from local path/URI if present
             ref_bytes = None
-            if job.reference_photo_b64:
+            if job.photo_path:
                 try:
-                    ref_bytes = base64.b64decode(job.reference_photo_b64)
+                    parsed = urlparse(job.photo_path)
+                    if parsed.scheme == "file":
+                        file_path = Path(url2pathname(parsed.path))
+                    else:
+                        file_path = Path(job.photo_path)
+
+                    if file_path.exists():
+                        ref_bytes = file_path.read_bytes()
+                    else:
+                        logger.warning(
+                            f"Reference photo file does not exist at '{file_path}' for job {job.job_id}"
+                        )
                 except Exception as e:
-                    logger.warning(f"Failed to decode reference photo for job {job.job_id}: {e}")
+                    logger.warning(
+                        f"Failed to load reference photo from '{job.photo_path}' for job {job.job_id}: {e}"
+                    )
 
             # Instantiate appropriate generator (Replicate, LiteLLM, or Mock)
             generator = GeneratorFactory.get_generator(force_mock=self.force_mock)
@@ -94,7 +203,7 @@ class AIWorkerPool:
             elapsed_ms = res.duration_ms or int((time.time() - start_time) * 1000)
 
             if res.status == GenerationStatus.SUCCESS and res.media_urls:
-                caption = f"✨ *{job.prompt}*"
+                caption = f"✨ <b>{html.escape(job.prompt)}</b>"
                 media_url_logged = res.media_urls[0]
                 media_input = MediaStorageManager.get_input_file(media_url_logged)
 
@@ -104,14 +213,14 @@ class AIWorkerPool:
                         chat_id=job.chat_id,
                         video=media_input,
                         caption=caption,
-                        parse_mode="Markdown",
+                        parse_mode="HTML",
                     )
                 else:
                     await bot.send_photo(
                         chat_id=job.chat_id,
                         photo=media_input,
                         caption=caption,
-                        parse_mode="Markdown",
+                        parse_mode="HTML",
                     )
 
                 # Delete temporary status message
@@ -135,6 +244,7 @@ class AIWorkerPool:
                         user_id=job.user_id,
                         model_name=job.model_name,
                         prompt=job.prompt,
+                        preset_id=job.preset_id,
                         media_url=media_url_logged,
                         status="success",
                         duration_ms=elapsed_ms,
@@ -151,8 +261,8 @@ class AIWorkerPool:
                     await bot.edit_message_text(
                         chat_id=job.chat_id,
                         message_id=job.status_message_id,
-                        text=f"❌ *Generation Failed*\n\n_{error_msg}_\n\n💰 _Your {job.cost} credit(s) have been refunded._",
-                        parse_mode="Markdown",
+                        text=f"❌ <b>Generation Failed</b>\n\n<i>{html.escape(error_msg)}</i>\n\n💰 <i>Your {job.cost} credit(s) have been refunded.</i>",
+                        parse_mode="HTML",
                     )
                 except Exception as e:
                     logger.warning(f"Could not edit status message: {e}")
@@ -182,6 +292,7 @@ class AIWorkerPool:
                         user_id=job.user_id,
                         model_name=job.model_name,
                         prompt=job.prompt,
+                        preset_id=job.preset_id,
                         status="failed",
                         duration_ms=elapsed_ms,
                         error_message=error_msg,
@@ -194,8 +305,8 @@ class AIWorkerPool:
                 await bot.edit_message_text(
                     chat_id=job.chat_id,
                     message_id=job.status_message_id,
-                    text=f"❌ *Unexpected System Error*: _{e!s}_\n\n💰 _Credits refunded._",
-                    parse_mode="Markdown",
+                    text=f"❌ <b>Unexpected System Error</b>: <i>{html.escape(str(e))}</i>\n\n💰 <i>Credits refunded.</i>",
+                    parse_mode="HTML",
                 )
             await db.add_user_credits(
                 user_id=job.user_id,

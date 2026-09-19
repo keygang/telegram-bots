@@ -80,3 +80,36 @@ def test_server_metrics_endpoint():
     assert response.status_code == 200
     assert "text/plain" in response.headers.get("content-type", "")
     assert "telegram_events_total" in response.text
+
+
+def test_prometheus_non_blocking_accumulator_and_pipeline():
+    from platform_core.metrics.prometheus import flush_metrics_to_redis
+
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_redis.pipeline.return_value = mock_pipe
+
+    with patch("platform_core.metrics.prometheus.get_redis_client", return_value=mock_redis):
+        # 1. Record metrics - these must NOT call redis directly!
+        record_prometheus_event("bot_acc", "command", "/test", duration_ms=50.0)
+        record_prometheus_generation("bot_acc", "success", "flux-schnell")
+        record_prometheus_stars("bot_acc", amount=20)
+        update_prometheus_queue(3)
+
+        # None of the hincrby or pipeline should have executed yet
+        mock_redis.hincrby.assert_not_called()
+        mock_pipe.execute.assert_not_called()
+
+        # 2. Flush metrics via pipeline
+        flush_metrics_to_redis()
+
+        # Pipeline must have been created and executed in a single batch
+        mock_redis.pipeline.assert_called_once_with(transaction=False)
+        mock_pipe.execute.assert_called_once()
+        # Verify pipelined operations
+        mock_pipe.hincrby.assert_any_call("metrics:events_total", "bot_acc:command:/test", 1)
+        mock_pipe.hincrbyfloat.assert_any_call("metrics:durations_sum", "bot_acc:command", 0.05)
+        mock_pipe.hincrby.assert_any_call("metrics:generations_total", "bot_acc:success:flux-schnell", 1)
+        mock_pipe.hincrby.assert_any_call("metrics:stars_total", "bot_acc", 20)
+        mock_pipe.set.assert_called_once_with("metrics:queue_pending", 3)
+

@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS public.generation_logs (
 -- Indexes for Fast Query Performance
 CREATE INDEX IF NOT EXISTS idx_star_transactions_user_id ON public.star_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_star_transactions_bot_id ON public.star_transactions(bot_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_star_transactions_charge_id ON public.star_transactions(telegram_payment_charge_id);
 CREATE INDEX IF NOT EXISTS idx_bot_events_bot_id ON public.bot_events(bot_id);
 CREATE INDEX IF NOT EXISTS idx_bot_events_user_id ON public.bot_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_generation_logs_bot_id ON public.generation_logs(bot_id);
@@ -129,7 +130,31 @@ CREATE INDEX IF NOT EXISTS idx_events_bot_id_timestamp ON public.events(bot_id, 
 CREATE INDEX IF NOT EXISTS idx_events_properties_gin ON public.events USING GIN (properties jsonb_path_ops);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp_brin ON public.events USING BRIN (timestamp);
 
--- 6. Preset Prompts Table (NoSQL Document Store using JSONB)
+-- 6. Atomic Credit Deduction Function (RPC)
+CREATE OR REPLACE FUNCTION public.deduct_user_credit(
+    p_user_id BIGINT,
+    p_amount INT DEFAULT 1
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_remaining INT;
+BEGIN
+    UPDATE public.user_balances
+    SET credits_remaining = credits_remaining - p_amount
+    WHERE user_id = p_user_id AND credits_remaining >= p_amount
+    RETURNING credits_remaining INTO v_remaining;
+
+    RETURN v_remaining IS NOT NULL;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.deduct_user_credit(BIGINT, INT) TO anon, authenticated, service_role;
+
+
+-- 7. Preset Prompts Table (NoSQL Document Store using JSONB)
 CREATE TABLE IF NOT EXISTS public.preset_prompts (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,

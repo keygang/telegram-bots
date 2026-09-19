@@ -10,6 +10,8 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - telegram_net
 
@@ -20,6 +22,8 @@ services:
     command: python -m platform_core.cli server --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    volumes:
+      - media_data:/app/data/media
     depends_on:
       - redis
     env_file:
@@ -38,6 +42,8 @@ services:
     container_name: telegram_ai_worker
     restart: unless-stopped
     command: python -m platform_core.cli worker --concurrency 4
+    volumes:
+      - media_data:/app/data/media
     depends_on:
       - redis
     env_file:
@@ -58,6 +64,8 @@ services:
     profiles:
       - monolith
     command: python -m platform_core.cli start all
+    volumes:
+      - media_data:/app/data/media
     depends_on:
       - redis
     env_file:
@@ -76,6 +84,8 @@ services:
     container_name: telegram_image_bot_1
     restart: unless-stopped
     command: python -m platform_core.cli start image_bot_1
+    volumes:
+      - media_data:/app/data/media
     depends_on:
       - redis
     env_file:
@@ -106,3 +116,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - telegram_net
+
+volumes:
+  redis_data:
+  media_data:

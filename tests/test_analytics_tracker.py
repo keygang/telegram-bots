@@ -208,3 +208,74 @@ async def test_disabled_tracker_analytics_ignored():
 
     summary = await db.get_metrics_summary()
     assert not any(b["bot_id"] == "crm_bot" for b in summary["bots_breakdown"])
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_async_batch_buffer_50_events():
+    from unittest.mock import AsyncMock, patch
+    from platform_core.events.tracker import get_event_queue, flush_events, shutdown_event_tracker
+
+    tracker = get_tracker("batch_test_bot")
+    queue = get_event_queue()
+
+    with patch.object(db, "track_events_batch", new_callable=AsyncMock) as mock_batch, \
+         patch.object(db, "track_event", new_callable=AsyncMock) as mock_single:
+
+        # 1. Track 49 events - batch should NOT flush yet automatically
+        for i in range(49):
+            evt = ButtonClickEvent(
+                distinct_id=1000 + i,
+                button_id=f"btn_{i}",
+                duration_ms=5,
+            )
+            await tracker.track(evt)
+
+        # Neither track_event nor track_events_batch should have been called yet
+        mock_single.assert_not_called()
+        assert queue.qsize() == 49
+
+        # 2. Push 50th event - now size reaches 50
+        evt_50 = ButtonClickEvent(
+            distinct_id=1050,
+            button_id="btn_50",
+            duration_ms=5,
+        )
+        await tracker.track(evt_50)
+
+        # Allow background flush task to run briefly
+        import asyncio
+        await asyncio.sleep(0.05)
+
+        # Background flush should have triggered db.track_events_batch with 50 events
+        mock_batch.assert_called_once()
+        args, _ = mock_batch.call_args
+        assert len(args[0]) == 50
+        assert mock_single.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_event_tracker_shutdown_flushes_remaining():
+    from unittest.mock import AsyncMock, patch
+    from platform_core.events.tracker import shutdown_event_tracker, get_event_queue
+
+    tracker = get_tracker("shutdown_test_bot")
+    queue = get_event_queue()
+
+    with patch.object(db, "track_events_batch", new_callable=AsyncMock) as mock_batch:
+        # Push 3 events (less than 50)
+        for i in range(3):
+            await tracker.track(
+                CommandEvent(distinct_id=2000 + i, command=f"/cmd_{i}", duration_ms=10)
+            )
+
+        assert queue.qsize() == 3
+
+        # Call graceful shutdown
+        await shutdown_event_tracker()
+
+        # Queue should be drained and db.track_events_batch called with the 3 events
+        assert queue.qsize() == 0
+        mock_batch.assert_called_once()
+        args, _ = mock_batch.call_args
+        assert len(args[0]) == 3
+

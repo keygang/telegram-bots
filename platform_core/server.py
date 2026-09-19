@@ -1,4 +1,5 @@
 import logging
+import secrets
 from contextlib import asynccontextmanager
 
 from aiogram.types import Update
@@ -7,9 +8,11 @@ from pydantic import BaseModel, Field
 
 from platform_core.cli import get_instance_config_files
 from platform_core.config import settings
+from platform_core.events.tracker import shutdown_event_tracker
 from platform_core.metrics.prometheus import (
     CONTENT_TYPE_LATEST,
     get_prometheus_metrics,
+    shutdown_metrics,
     update_prometheus_queue,
 )
 from platform_core.modules.builder import ModularBot, ModularBotBuilder
@@ -55,7 +58,13 @@ async def initialize_bot_instances():
 
             # Run startup hooks for registered modules
             for mod in bot_app.modules:
-                await mod.on_startup(bot_app.bot, bot_app.dp)
+                try:
+                    await mod.on_startup(bot_app.bot, bot_app.dp)
+                except Exception as e:
+                    logger.error(
+                        f"Startup hook failed for module {mod.__class__.__name__} in [{bot_app.bot_id}]: {e}",
+                        exc_info=True,
+                    )
 
             if bot_app.commands:
                 try:
@@ -87,26 +96,38 @@ async def initialize_bot_instances():
                         f"Bot [{bot_app.bot_id}] uses webhook strategy, but WEBHOOK_BASE_URL is not set."
                     )
             else:
-                logger.info(
-                    f"ℹ️ Bot [{bot_app.bot_id}] is configured for POLLING strategy (skipping server webhook registration)."
+                logger.warning(
+                    f"⚠️ Bot [{bot_app.bot_id}] is configured for POLLING strategy (skipping server webhook registration; webhook updates will be rejected)."
                 )
 
         except Exception as e:
-            logger.error(f"Failed to initialize bot instance from {cfg_path}: {e}")
+            logger.error(f"Failed to initialize bot instance from {cfg_path}: {e}", exc_info=True)
 
 
 async def shutdown_bot_instances():
     """Cleans up webhooks and closes bot sessions on server shutdown."""
-    for bot_id, bot_app in BOT_INSTANCES.items():
+    for bot_id, bot_app in list(BOT_INSTANCES.items()):
         try:
             for mod in bot_app.modules:
-                await mod.on_shutdown(bot_app.bot, bot_app.dp)
-            await bot_app.bot.session.close()
+                try:
+                    await mod.on_shutdown(bot_app.bot, bot_app.dp)
+                except Exception as e:
+                    logger.warning(
+                        f"Shutdown hook failed for module {mod.__class__.__name__} in [{bot_id}]: {e}"
+                    )
+            if bot_app.bot and bot_app.bot.session:
+                await bot_app.bot.session.close()
             logger.info(f"Closed bot session for [{bot_id}]")
         except Exception as e:
             logger.warning(f"Error shutting down bot [{bot_id}]: {e}")
     BOT_INSTANCES.clear()
-    await task_broker.close()
+    try:
+        await task_broker.close()
+    except Exception as e:
+        logger.warning(f"Error closing task broker on shutdown: {e}")
+    await shutdown_event_tracker()
+    shutdown_metrics()
+
 
 
 @asynccontextmanager
@@ -161,7 +182,7 @@ async def metrics():
 async def handle_telegram_webhook(
     bot_id: str,
     request: Request,
-    x_telegram_bot_api_secret_token: str = Header(None, alias="X-Telegram-Bot-Api-Secret-Token"),
+    x_telegram_bot_api_secret_token: str | None = Header(None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ):
     """
     High-performance Webhook endpoint receiving HTTP POST updates from Telegram.
@@ -175,14 +196,23 @@ async def handle_telegram_webhook(
         )
 
     # Secret token validation if configured
-    if (
-        settings.WEBHOOK_SECRET_TOKEN
-        and x_telegram_bot_api_secret_token
-        and x_telegram_bot_api_secret_token != settings.WEBHOOK_SECRET_TOKEN
-    ):
+    if settings.WEBHOOK_SECRET_TOKEN:
+        if not x_telegram_bot_api_secret_token or not secrets.compare_digest(
+            x_telegram_bot_api_secret_token, settings.WEBHOOK_SECRET_TOKEN
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing Telegram secret token",
+            )
+
+    # Reject updates for bots configured for polling strategy
+    if bot_app.strategy == "polling":
+        logger.warning(
+            f"Rejected webhook update for bot [{bot_id}]: bot is configured for POLLING strategy."
+        )
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Telegram secret token",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bot instance '{bot_id}' is configured for polling strategy, not webhook",
         )
 
     try:
